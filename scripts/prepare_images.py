@@ -1,7 +1,7 @@
 """
 Przygotowanie obrazów z reference/ do gry (public/…). Uruchom z katalogu repo:
     python3 scripts/prepare_images.py            # wszystko
-    python3 scripts/prepare_images.py panorama   # tylko wybrane: panorama | fish | og | textures
+    python3 scripts/prepare_images.py panorama   # tylko wybrane: panorama | fish | og | textures | foliage
 Wymaga: Pillow, numpy (pip install pillow numpy). Oryginały zostają w reference/.
 """
 import sys
@@ -256,7 +256,7 @@ def tex_water_normal(n=512):
     nm = np.stack([-gx / L, -gy / L, nz / L], -1) * 0.5 + 0.5
     img = Image.fromarray((nm * 255).astype(np.uint8))
     path = PUB / 'textures' / 'water_normal.png'
-    img.save(path, optimize=True)
+    img.save(path, 'WEBP', quality=90, method=6)
     print(f'  {path.relative_to(ROOT)}  {n}×{n}  {path.stat().st_size // 1024} KB')
 
 
@@ -266,7 +266,7 @@ def tex_noise(n=256):
     a = np.stack(ch, -1)
     img = Image.fromarray((a * 255).astype(np.uint8), 'RGBA')
     path = PUB / 'textures' / 'noise.png'
-    img.save(path, optimize=True)
+    img.save(path, 'WEBP', quality=90, method=6)
     print(f'  {path.relative_to(ROOT)}  {n}×{n}  {path.stat().st_size // 1024} KB')
 
 
@@ -343,6 +343,11 @@ def fish():
         path.parent.mkdir(parents=True, exist_ok=True)
         c.save(path, 'WEBP', quality=86, method=6)
         print(f'  {path.relative_to(ROOT)}  {c.size[0]}×{c.size[1]}  {path.stat().st_size // 1024} KB')
+        # tekstura modelu 3D: ta sama ilustracja, kolor rozlany w przezroczyste tło (bez czarnych obwódek)
+        tpath = PUB / 'textures' / 'fish' / f'{sid}.webp'
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        bleed(c).save(tpath, 'WEBP', quality=88, method=6)
+        print(f'  {tpath.relative_to(ROOT)}  {c.size[0]}×{c.size[1]}  {tpath.stat().st_size // 1024} KB')
 
 
 def og():
@@ -356,7 +361,214 @@ def og():
     save_jpg(crop, PUB / 'og-image.jpg', q=84)
 
 
-TASKS = {'panorama': panorama, 'textures': textures, 'fish': fish, 'og': og}
+
+# ---------------------------------------------------------------------------
+# atlas liści i igliwia (karty drzew i roślin): gałąź świerka, pęk sosny, liście, pędy wierzby, paproć
+# ---------------------------------------------------------------------------
+import math
+import random
+from PIL import ImageDraw
+
+S = 2  # nadpróbkowanie
+W, H = 1024, 512
+
+def hexc(h):
+    return tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
+
+def lerpc(a, b, t):
+    t = max(0.0, min(1.0, t))
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+def grad(stops, t):
+    for i in range(len(stops) - 1):
+        t0, c0 = stops[i]; t1, c1 = stops[i + 1]
+        if t <= t1:
+            return lerpc(c0, c1, (t - t0) / max(1e-6, t1 - t0))
+    return stops[-1][1]
+
+def jitterc(c, rnd, amt=18):
+    d = rnd.uniform(-amt, amt)
+    return tuple(max(0, min(255, int(v + d + rnd.uniform(-6, 6)))) for v in c)
+
+def spruce(draw, x0, y0, w, h, rnd):
+    """Gałąź świerka z góry: od pnia (lewo) do końca (prawo) – gęsta, pierzasta, z odgałęzieniami."""
+    cy = y0 + h / 2
+    twig = hexc('#4a3322')
+    needles = [(0.0, hexc('#132a16')), (0.4, hexc('#21401f')), (0.75, hexc('#3a642a')), (1.0, hexc('#a2b44c'))]
+    def axis(t):
+        return (x0 + t * w * 0.97, cy + math.sin(t * math.pi) * h * 0.03)
+    segs = []  # (ax, ay, ex, ey, t_along_branch, level)
+    n = 34
+    for i in range(n):
+        t = 0.03 + 0.95 * i / n
+        side = 1 if i % 2 == 0 else -1
+        ax, ay = axis(t)
+        L = h * 0.5 * (1 - t * 0.7) * rnd.uniform(0.85, 1.05)
+        ang = math.radians(rnd.uniform(42, 56))
+        ex, ey = ax + math.cos(ang) * L, ay + side * math.sin(ang) * L
+        segs.append((ax, ay, ex, ey, t, 1))
+        # odgałęzienia drugiego rzędu
+        for k in range(3):
+            u = 0.3 + 0.22 * k
+            bx, by = ax + (ex - ax) * u, ay + (ey - ay) * u
+            l2 = L * 0.38 * (1 - u * 0.5)
+            a2 = ang + side * 0 + math.radians(rnd.uniform(35, 50)) * (1 if k % 2 == 0 else -1)
+            segs.append((bx, by, bx + math.cos(a2) * l2, by + side * math.sin(a2) * l2 if k % 2 == 0 else by + side * math.sin(ang - math.radians(40)) * l2, t, 2))
+    def needle_line(ax, ay, ex, ey, tbase, spacing, lenpx, width):
+        dx, dy = ex - ax, ey - ay
+        L = math.hypot(dx, dy) + 1e-6
+        ux, uy = dx / L, dy / L
+        count = int(L / spacing) + 3
+        for k in range(count):
+            s = k / count
+            px, py = ax + dx * s, ay + dy * s
+            for sgn in (-1, 1):
+                a = math.radians(rnd.uniform(40, 75)) * sgn
+                vx = ux * math.cos(a) - uy * math.sin(a)
+                vy = ux * math.sin(a) + uy * math.cos(a)
+                ln = lenpx * rnd.uniform(0.75, 1.15) * (1 - 0.3 * s)
+                c = grad(needles, 0.2 + 0.8 * (tbase * 0.5 + s * 0.5) + rnd.uniform(-0.15, 0.1))
+                draw.line([(px, py), (px + vx * ln, py + vy * ln)], fill=jitterc(c, rnd, 14) + (255,), width=width)
+    for i in range(60):
+        t = i / 60
+        ax, ay = axis(t); bx, by = axis(t + 1 / 60)
+        draw.line([(ax, ay), (bx, by)], fill=twig + (255,), width=max(3, int(9 * S * (1 - t * 0.7))))
+    for (ax, ay, ex, ey, t, lv) in segs:
+        draw.line([(ax, ay), (ex, ey)], fill=twig + (255,), width=max(2, int((5 if lv == 1 else 3) * S * (1 - t * 0.5))))
+    # najpierw ciemniejsze, dłuższe igły przy osi, potem gałązki (jaśniejsze końce na wierzchu)
+    for i in range(0, 60):
+        t = i / 60
+        ax, ay = axis(t); bx, by = axis(t + 1 / 60)
+        needle_line(ax, ay, bx, by, t * 0.6, 2.6 * S, 22 * S * (1 - t * 0.4), max(2, int(2.0 * S)))
+    for (ax, ay, ex, ey, t, lv) in sorted(segs, key=lambda q: q[5]):
+        needle_line(ax, ay, ex, ey, t, 2.4 * S, (15 if lv == 1 else 12) * S, max(2, int(1.8 * S)))
+
+def pine_tuft(draw, cx, cy, r, rnd):
+    stops = [(0.0, hexc('#1f3a1a')), (0.6, hexc('#3a5e26')), (1.0, hexc('#8ea040'))]
+    for k in range(9):
+        # kilka pęków w kiści
+        a0 = rnd.uniform(0, 6.28)
+        rr = r * (0.0 if k == 0 else rnd.uniform(0.25, 0.5))
+        px, py = cx + math.cos(a0) * rr, cy + math.sin(a0) * rr
+        for j in range(110):
+            a = rnd.uniform(0, 6.28)
+            ln = r * rnd.uniform(0.35, 0.62)
+            c = grad(stops, rnd.uniform(0.2, 1.0))
+            draw.line([(px, py), (px + math.cos(a) * ln, py + math.sin(a) * ln)], fill=jitterc(c, rnd) + (255,), width=int(1.6 * S))
+
+def leaf(draw, x, y, ang, L, Wd, col):
+    pts = []
+    for i in range(12):
+        t = i / 11
+        wv = math.sin(math.pi * t) ** 0.8 * Wd
+        pts.append((t * L, wv))
+    for i in range(11, -1, -1):
+        t = i / 11
+        wv = math.sin(math.pi * t) ** 0.8 * Wd
+        pts.append((t * L, -wv))
+    ca, sa = math.cos(ang), math.sin(ang)
+    draw.polygon([(x + px * ca - py * sa, y + px * sa + py * ca) for px, py in pts], fill=col + (255,))
+
+def leaf_cluster(draw, cx, cy, r, rnd, stops, count=140, size=(16, 26)):
+    twig = hexc('#4a3a2c')
+    for k in range(7):
+        a = rnd.uniform(0, 6.28)
+        draw.line([(cx, cy), (cx + math.cos(a) * r * 0.8, cy + math.sin(a) * r * 0.8)], fill=twig + (255,), width=int(2 * S))
+    for j in range(count):
+        a = rnd.uniform(0, 6.28)
+        d = r * math.sqrt(rnd.uniform(0.02, 1.0)) * 0.82
+        x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
+        L = rnd.uniform(*size) * S
+        c = grad(stops, rnd.uniform(0, 1) * 0.6 + (d / r) * 0.4)
+        leaf(draw, x, y, rnd.uniform(0, 6.28), L, L * 0.33, jitterc(c, rnd, 14))
+
+def willow(draw, x0, y0, w, h, rnd):
+    stem = hexc('#5a5a2a')
+    stops = [(0.0, hexc('#4a6a24')), (0.6, hexc('#8aa83a')), (1.0, hexc('#c2cf62'))]
+    for s in range(4):
+        x = x0 + w * (0.14 + 0.24 * s) + rnd.uniform(-8, 8)
+        prev = (x, y0)
+        n = 46
+        for i in range(1, n + 1):
+            t = i / n
+            px = x + math.sin(t * 3 + s) * w * 0.03
+            py = y0 + t * h * rnd.uniform(0.93, 0.99)
+            draw.line([prev, (px, py)], fill=stem + (255,), width=int(1.4 * S))
+            prev = (px, py)
+            for sgn in (-1, 1):
+                ang = math.pi / 2 + sgn * rnd.uniform(0.25, 0.6)
+                L = rnd.uniform(16, 26) * S * (1 - 0.3 * t)
+                leaf(draw, px, py, ang, L, L * 0.16, jitterc(grad(stops, rnd.uniform(0, 1)), rnd, 12))
+
+def fern(draw, x0, y0, w, h, rnd):
+    stops = [(0.0, hexc('#2c5220')), (0.7, hexc('#5a852e')), (1.0, hexc('#9fb548'))]
+    cx = x0 + w / 2
+    n = 17
+    draw.line([(cx, y0 + h), (cx, y0 + 4)], fill=hexc('#4a5a22') + (255,), width=int(2.4 * S))
+    for i in range(n):
+        t = i / n
+        py = y0 + h - t * h * 0.97
+        L = w * 0.47 * math.sin(math.pi * (0.12 + 0.88 * t)) ** 0.8 * (1 - t * 0.3)
+        for sgn in (-1, 1):
+            ang = (0 if sgn > 0 else math.pi) - sgn * 0.25
+            px, pyy = cx, py
+            # listek pierzasty: oś + drobne ząbki
+            ex, ey = px + math.cos(ang) * L, pyy + math.sin(ang) * L * -1 * 0.0 - L * 0.22
+            c = jitterc(grad(stops, 0.25 + t * 0.5), rnd, 10)
+            leaf(draw, px, pyy, math.atan2(ey - pyy, ex - px), L, L * 0.05, c)
+            for k in range(1, 9):
+                u = k / 9
+                qx, qy = px + (ex - px) * u, pyy + (ey - pyy) * u
+                lw = L * 0.085 * (1 - u * 0.6)
+                c2 = jitterc(grad(stops, 0.35 + u * 0.5 + t * 0.2), rnd, 10)
+                leaf(draw, qx, qy, math.atan2(ey - pyy, ex - px) - 1.1, lw * 2.2, lw * 0.5, c2)
+                leaf(draw, qx, qy, math.atan2(ey - pyy, ex - px) + 1.1, lw * 2.2, lw * 0.5, c2)
+
+def bleed(img):
+    """Kolor wpuszczony w przezroczyste tło (bez ciemnych obwódek przy mipmapach)."""
+    a = np.asarray(img).astype(np.float32) / 255
+    rgb, al = a[..., :3], a[..., 3:4]
+    acc = rgb * al; w = al.copy()
+    out = rgb.copy()
+    cur_acc, cur_w = acc, w
+    for r in (2, 4, 8, 16, 32, 64):
+        ba = np.asarray(Image.fromarray((cur_acc * 255).astype(np.uint8)).filter(ImageFilter.BoxBlur(r))).astype(np.float32) / 255
+        bw = np.asarray(Image.fromarray((cur_w[..., 0] * 255).astype(np.uint8)).filter(ImageFilter.BoxBlur(r))).astype(np.float32)[..., None] / 255
+        fill = ba / np.maximum(bw, 1e-4)
+        mask = (w < 0.5) & (bw > 1e-3)
+        out = np.where(mask & (out.sum(-1, keepdims=True) == rgb.sum(-1, keepdims=True)), fill, out) if False else np.where((al < 0.5) & (bw > 1e-3), fill, out)
+        # kolejne promienie tylko tam, gdzie jeszcze pusto
+        al = np.maximum(al, (bw > 1e-3).astype(np.float32) * 0.49)
+    res = np.concatenate([np.clip(out, 0, 1), a[..., 3:4]], -1)
+    return Image.fromarray((res * 255).astype(np.uint8), 'RGBA')
+
+def foliage_atlas(path):
+    rnd = random.Random(7)
+    img = Image.new('RGBA', (W * S, H * S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # górna połowa: gałąź świerka (1024×256)
+    spruce(d, 6 * S, 0, (W - 12) * S, (H // 2) * S, rnd)
+    # dolna połowa: sosna | liście (brzoza/krzak) | wierzba | paproć – po 256×256
+    q = (H // 2) * S
+    pine_tuft(d, 128 * S, q + 128 * S, 118 * S, rnd)
+    leaf_cluster(d, 384 * S, q + 128 * S, 118 * S, rnd, [(0.0, hexc('#3f5e1e')), (0.6, hexc('#7b9a30')), (1.0, hexc('#c4cf58'))], count=260, size=(18, 28))
+    willow(d, 512 * S, q + 2 * S, 256 * S, 252 * S, rnd)
+    fern(d, 768 * S, q + 2 * S, 256 * S, 252 * S, rnd)
+    # białe, nieprzezroczyste pole na pnie (UV wskazuje tu, kolor z wierzchołków)
+    d.rectangle([W * S - 10 * S, H * S - 10 * S, W * S, H * S], fill=(255, 255, 255, 255))
+    img = img.resize((W, H), Image.LANCZOS)
+    img = bleed(img)
+    img.save(path, 'WEBP', quality=90, method=6)
+    print(f'  {path.relative_to(ROOT)}  {img.size[0]}×{img.size[1]}  {path.stat().st_size // 1024} KB')
+    return img
+
+
+
+def foliage():
+    foliage_atlas(PUB / 'textures' / 'foliage.webp')
+
+
+TASKS = {'panorama': panorama, 'textures': textures, 'fish': fish, 'og': og, 'foliage': foliage}
 
 if __name__ == '__main__':
     which = sys.argv[1:] or list(TASKS)

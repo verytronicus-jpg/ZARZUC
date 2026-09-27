@@ -104,6 +104,17 @@ class GltfFactory implements AssetFactory {
   }
 }
 
+/** Fabryka ryb: model GLB dla wybranych gatunków, reszta z fabryki zapasowej. */
+class SpeciesSwitch implements AssetFactory {
+  readonly bySpecies = new Map<SpeciesId, AssetFactory>();
+  constructor(private fallback: AssetFactory | undefined) {}
+  create(opts?: AssetOptions): THREE.Object3D {
+    const f = (opts?.species && this.bySpecies.get(opts.species)) || this.fallback;
+    if (!f) throw new Error('[AssetRegistry] Brak modelu ryby');
+    return f.create(opts);
+  }
+}
+
 export class AssetRegistry {
   private factories = new Map<AssetKind, AssetFactory>();
 
@@ -124,11 +135,23 @@ export class AssetRegistry {
   }
 
   /**
-   * Podmiana fabryki na model GLB (np. wyeksportowany z Blendera).
-   * Dla ryb można rejestrować osobne GLB per gatunek przez własną fabrykę.
+   * Podmiana fabryki na model GLB (np. wyeksportowany z Blendera). Zwraca false, gdy w modelu brakuje wymaganych
+   * pivotów – wtedy zostaje dotychczasowa fabryka. Dla ryb `species` podmienia tylko jeden gatunek.
    */
-  async loadGLB(kind: AssetKind, url: string, scale = 1): Promise<void> {
+  async loadGLB(kind: AssetKind, url: string, scale = 1, opts: { species?: SpeciesId; required?: string[] } = {}): Promise<boolean> {
     const gltf = await new GLTFLoader().loadAsync(url);
-    this.register(kind, new GltfFactory(gltf.scene, scale));
+    const missing = (opts.required ?? []).filter((n) => !gltf.scene.getObjectByName(n));
+    if (missing.length) {
+      console.warn(`[AssetRegistry] ${url}: brak pivotów ${missing.join(', ')} – zostaje model proceduralny`);
+      return false;
+    }
+    const glb = new GltfFactory(gltf.scene, scale);
+    if (opts.species) {
+      const fallback = this.factories.get(kind);
+      const prev = fallback instanceof SpeciesSwitch ? fallback : new SpeciesSwitch(fallback);
+      prev.bySpecies.set(opts.species, glb);
+      this.register(kind, prev);
+    } else this.register(kind, glb);
+    return true;
   }
 }

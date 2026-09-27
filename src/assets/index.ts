@@ -6,14 +6,9 @@ import { FishFactory } from './procedural/fish';
 import { CabinFactory, BoatFactory } from './procedural/cabin';
 import { CabinInteriorFactory } from './procedural/interior';
 import { PovHandFactory } from './procedural/povHand';
+import { SpruceCardFactory, PineCardFactory, BirchCardFactory, WillowCardFactory, BushCardFactory, FernCardFactory } from './procedural/foliage';
 import {
-  SpruceFactory,
   FarTreeFactory,
-  PineFactory,
-  BirchFactory,
-  WillowFactory,
-  BushFactory,
-  FernFactory,
   ReedFactory,
   CattailFactory,
   LilyFactory,
@@ -30,7 +25,7 @@ function optimized(f: AssetFactory): AssetFactory {
 /** Rejestruje fabryki proceduralne. Podmiana na GLB: patrz README ("Modele z Blendera"). */
 export function createDefaultRegistry(): AssetRegistry {
   const r = new AssetRegistry();
-  r.register('character', optimized(new CharacterFactory()));
+  r.register('character', new CharacterFactory());
   r.register('rod', optimized(new RodFactory()));
   r.register('float', optimized(new FloatFactory()));
   r.register('hook', optimized(new HookFactory()));
@@ -42,14 +37,14 @@ export function createDefaultRegistry(): AssetRegistry {
   r.register('cabinInterior', new CabinInteriorFactory());
   r.register('povHand', new PovHandFactory());
   r.register('boat', new BoatFactory());
-  r.register('spruceNear', new SpruceFactory('near'));
-  r.register('spruceMid', new SpruceFactory('mid'));
+  r.register('spruceNear', new SpruceCardFactory('near'));
+  r.register('spruceMid', new SpruceCardFactory('mid'));
   r.register('farTree', new FarTreeFactory());
-  r.register('pine', new PineFactory());
-  r.register('birch', new BirchFactory());
-  r.register('willow', new WillowFactory());
-  r.register('bush', new BushFactory());
-  r.register('fern', new FernFactory());
+  r.register('pine', new PineCardFactory());
+  r.register('birch', new BirchCardFactory());
+  r.register('willow', new WillowCardFactory());
+  r.register('bush', new BushCardFactory());
+  r.register('fern', new FernCardFactory());
   r.register('reeds', new ReedFactory());
   r.register('cattail', new CattailFactory());
   r.register('lily', new LilyFactory());

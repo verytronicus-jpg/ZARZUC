@@ -5,9 +5,11 @@ import * as THREE from 'three';
  * Obiekty Texture istnieją od startu (stałe referencje w materiałach); obraz dochodzi asynchronicznie.
  * `texturesReady` – stan BOOT czeka na wczytanie przed pokazaniem świata.
  */
-export type TexName = 'grass' | 'forest' | 'path' | 'sand' | 'bed' | 'rock' | 'wood' | 'bark' | 'waterNormal' | 'noise';
+export type TexName =
+  | 'grass' | 'forest' | 'path' | 'sand' | 'bed' | 'rock' | 'wood' | 'bark' | 'waterNormal' | 'noise' | 'foliage'
+  | 'fish_ploc' | 'fish_okon' | 'fish_karas' | 'fish_leszcz' | 'fish_karp';
 
-const FILES: Record<TexName, { url: string; color: boolean }> = {
+const FILES: Record<TexName, { url: string; color: boolean; clamp?: boolean }> = {
   grass: { url: 'textures/grass.jpg', color: true },
   forest: { url: 'textures/forest.jpg', color: true },
   path: { url: 'textures/path.jpg', color: true },
@@ -18,6 +20,14 @@ const FILES: Record<TexName, { url: string; color: boolean }> = {
   bark: { url: 'textures/bark.jpg', color: false },
   waterNormal: { url: 'textures/water_normal.png', color: false },
   noise: { url: 'textures/noise.png', color: false },
+  /** atlas liści i igliwia z kanałem alfa (karty drzew i roślin) */
+  foliage: { url: 'textures/foliage.webp', color: true, clamp: true },
+  /** ilustracje ryb rzutowane z boku na modele 3D */
+  fish_ploc: { url: 'textures/fish/ploc.webp', color: true, clamp: true },
+  fish_okon: { url: 'textures/fish/okon.webp', color: true, clamp: true },
+  fish_karas: { url: 'textures/fish/karas.webp', color: true, clamp: true },
+  fish_leszcz: { url: 'textures/fish/leszcz.webp', color: true, clamp: true },
+  fish_karp: { url: 'textures/fish/karp.webp', color: true, clamp: true },
 };
 
 const cache = new Map<TexName, THREE.Texture>();
@@ -37,7 +47,7 @@ function create(name: TexName): THREE.Texture {
       done();
     },
   );
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.wrapS = t.wrapT = f.clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
   t.colorSpace = f.color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = 4;
   t.name = name;

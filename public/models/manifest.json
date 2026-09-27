@@ -1,0 +1,4 @@
+{
+  "_opis": "Modele GLB zastępujące proceduralne. Klucz = rodzaj (character, rod, float, cabin, boat, spruceNear…; ryby: fish:<gatunek>). Wymagane pivoty – patrz src/assets/manifest.ts i README. Pusta lista = wszystko proceduralne.",
+  "models": {}
+}

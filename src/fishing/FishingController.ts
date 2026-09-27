@@ -351,7 +351,7 @@ export class FishingController {
           this.gear.baitOn = false;
           this.bobber.toHand(this.lastTip);
           this.L = CFG.cast.hangLength;
-          if (this.fishObj) this.fishObj.visible = false;
+          // ryba zostaje w dłoniach bohatera do zamknięcia ekranu połowu
           events.emit('caught', {});
           if (this.fishInfo) this.onCatch({ ...this.fishInfo, fightTime: this.fightTime });
         },
@@ -772,8 +772,10 @@ export class FishingController {
       case 'LANDING':
         anim.setPose('lift');
         break;
-      case 'IDLE':
       case 'CAUGHT':
+        anim.setPose('showFish', 6);
+        break;
+      case 'IDLE':
       case 'LINE_SNAPPED':
         if (anim.pose !== 'bait') anim.setPose('holdRod');
         break;
@@ -986,7 +988,23 @@ export class FishingController {
     this.lineRenderer.set(this.line.pos);
 
     // ryba
-    if (this.fishObj && this.fish && this.fsm.is('FIGHT', 'LANDING')) {
+    if (this.fishObj && this.fsm.is('CAUGHT')) {
+      // ryba oburącz przed piersią, w poprzek ciała (głową w lewo)
+      const o = this.fishObj;
+      const hl = pivot(this.player.root, PIVOTS.handL).getWorldPosition(tmpA);
+      const hr = pivot(this.player.root, PIVOTS.handR).getWorldPosition(tmpB);
+      o.visible = true;
+      o.position.lerpVectors(hl, hr, 0.5);
+      o.position.y += 0.02;
+      o.rotation.set(0, this.player.yaw + Math.PI / 2, 0);
+      const mat = (o.getObjectByName('fish_body') as THREE.Mesh | undefined)?.material as THREE.Material | undefined;
+      const u = mat?.userData.uniforms as Record<string, { value: unknown }> | undefined;
+      if (u) {
+        u.uTime.value = time;
+        u.uSwim.value = 0.25;
+        u.uSwimFreq.value = 6;
+      }
+    } else if (this.fishObj && this.fish && this.fsm.is('FIGHT', 'LANDING')) {
       const f = this.fish;
       const pos = tmpA.lerpVectors(f.prevPos, f.pos, alpha);
       const len = f.lengthM;

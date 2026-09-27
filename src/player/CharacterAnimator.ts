@@ -13,7 +13,8 @@ export type UpperPose =
   | 'aim'
   | 'charge'
   | 'castFwd'
-  | 'fight';
+  | 'fight'
+  | 'showFish';
 
 type Rot = [number, number, number];
 interface PoseDef {
@@ -35,6 +36,16 @@ const POSES: Record<Exclude<UpperPose, 'none'>, PoseDef> = {
   charge: { upperarm_R: [-2.6, 0, 0.25], forearm_R: [-1.1, 0, 0], upperarm_L: [-1.3, 0, -0.35], forearm_L: [-0.9, 0, 0], spine: [-0.08, 0, 0] },
   castFwd: { upperarm_R: [-1.25, 0, 0.2], forearm_R: [-0.25, 0, 0], upperarm_L: [-0.9, 0, -0.3], forearm_L: [-0.6, 0, 0], spine: [0.18, 0, 0] },
   fight: { upperarm_R: [-1.0, 0, 0.3], forearm_R: [-1.05, 0, 0], upperarm_L: [-0.95, 0, -0.45], forearm_L: [-1.35, 0, 0], spine: [-0.05, 0, 0] },
+  // ryba trzymana oburącz przed piersią (arkusz 02, środek dołu)
+  showFish: { upperarm_R: [-0.4, 0, 0.12], forearm_R: [-1.3, 0, 0], upperarm_L: [-0.4, 0, -0.12], forearm_L: [-1.3, 0, 0], spine: [-0.04, 0, 0], head: [0.25, 0, 0] },
+};
+
+/** Dolna część ciała: kucanie (nabijanie), szeroki rozkrok (hol), wykrok (zarzut). */
+type LegPose = { thighL: Rot; shinL: number; footL: number; thighR: Rot; shinR: number; footR: number; hipsY: number; hipsZ: number; spine: number; head: number };
+const LEGS: Record<'crouch' | 'stance' | 'lunge', LegPose> = {
+  crouch: { thighL: [-1.45, 0, 0.12], shinL: 2.05, footL: -0.6, thighR: [-0.75, 0, -0.1], shinR: 2.35, footR: -0.35, hipsY: -0.45, hipsZ: -0.04, spine: 0.22, head: 0.15 },
+  stance: { thighL: [-0.12, 0, 0.2], shinL: 0.3, footL: -0.1, thighR: [0.18, 0, -0.2], shinR: 0.25, footR: -0.08, hipsY: -0.06, hipsZ: 0, spine: 0, head: 0 },
+  lunge: { thighL: [-0.4, 0, 0.1], shinL: 0.35, footL: 0.05, thighR: [0.3, 0, -0.1], shinR: 0.12, footR: -0.25, hipsY: -0.05, hipsZ: 0, spine: 0, head: 0 },
 };
 
 const JOINTS = [
@@ -53,6 +64,7 @@ export class CharacterAnimator {
   private run = 0;
   private time = 0;
   private hipsBaseY: number;
+  private legW = { crouch: 0, stance: 0, lunge: 0 };
   pose: UpperPose = 'none';
   private poseW = 0;
   private current: Required<PoseDef> = {
@@ -110,7 +122,41 @@ export class CharacterAnimator {
     const hips = j[PIVOTS.hips];
     if (hips) {
       hips.position.y = this.hipsBaseY - 0.035 * w * Math.abs(s) - 0.05 * r + 0.012 * (1 - w) * Math.sin(this.time * 1.7);
+      hips.position.z = 0;
       hips.rotation.set(0, 0.08 * s * w, 0.04 * s * w);
+    }
+    // pozy dolnej części ciała (tylko gdy postać stoi)
+    const still = 1 - w;
+    const lw = this.legW;
+    lw.crouch = damp(lw.crouch, this.pose === 'bait' ? still : 0, 6, dt);
+    lw.stance = damp(lw.stance, this.pose === 'fight' || this.pose === 'showFish' ? still * (this.pose === 'fight' ? 1 : 0.4) : 0, 5, dt);
+    lw.lunge = damp(lw.lunge, this.pose === 'charge' || this.pose === 'castFwd' || this.pose === 'aim' ? still : 0, 7, dt);
+    let leanSpine = 0;
+    let leanHead = 0;
+    for (const key of ['stance', 'lunge', 'crouch'] as const) {
+      const k = lw[key];
+      if (k < 1e-3) continue;
+      const L = LEGS[key];
+      const mixRot = (name: string, t: Rot) => {
+        const o = j[name];
+        if (o) o.rotation.set(lerp(o.rotation.x, t[0], k), lerp(o.rotation.y, t[1], k), lerp(o.rotation.z, t[2], k));
+      };
+      const mixX = (name: string, x: number) => {
+        const o = j[name];
+        if (o) o.rotation.x = lerp(o.rotation.x, x, k);
+      };
+      mixRot(PIVOTS.thighL, L.thighL);
+      mixRot(PIVOTS.thighR, L.thighR);
+      mixX(PIVOTS.shinL, L.shinL);
+      mixX(PIVOTS.shinR, L.shinR);
+      mixX(PIVOTS.footL, L.footL);
+      mixX(PIVOTS.footR, L.footR);
+      if (hips) {
+        hips.position.y += L.hipsY * k;
+        hips.position.z += L.hipsZ * k;
+      }
+      leanSpine += L.spine * k;
+      leanHead += L.head * k;
     }
 
     // locomocja rąk
@@ -143,12 +189,14 @@ export class CharacterAnimator {
     }
     // wiercenie się przy nabijaniu
     const fid = this.fidget * Math.sin(this.time * 11) * 0.12;
-    set(PIVOTS.upperarmR, this.current.upperarm_R[0] + fid, this.current.upperarm_R[1], this.current.upperarm_R[2] + 0.08);
+    // ręce opuszczone lekko od ciała (luźno), w pozach – jak w definicji
+    const armOut = lerp(-0.1, 0.08, this.poseW);
+    set(PIVOTS.upperarmR, this.current.upperarm_R[0] + fid, this.current.upperarm_R[1], this.current.upperarm_R[2] + armOut);
     set(PIVOTS.forearmR, this.current.forearm_R[0] - fid, 0, 0);
-    set(PIVOTS.upperarmL, this.current.upperarm_L[0] - fid * 0.5, this.current.upperarm_L[1], this.current.upperarm_L[2] - 0.08);
+    set(PIVOTS.upperarmL, this.current.upperarm_L[0] - fid * 0.5, this.current.upperarm_L[1], this.current.upperarm_L[2] - armOut);
     set(PIVOTS.forearmL, this.current.forearm_L[0], 0, 0);
-    set(PIVOTS.spine, this.current.spine[0], this.current.spine[1] + this.lookYaw * 0.4, this.current.spine[2]);
-    set(PIVOTS.head, this.current.head[0], this.current.head[1] + this.lookYaw * 0.4, 0);
+    set(PIVOTS.spine, this.current.spine[0] + leanSpine, this.current.spine[1] + this.lookYaw * 0.4, this.current.spine[2]);
+    set(PIVOTS.head, this.current.head[0] + leanHead, this.current.head[1] + this.lookYaw * 0.4, 0);
   }
 
   private resolvePose(p: Exclude<UpperPose, 'none'>): PoseDef {

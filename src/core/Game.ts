@@ -65,12 +65,12 @@ export class Game {
   private floatCamPos = new THREE.Vector3();
   private floatCamInit = false;
 
-  constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
+  constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement, assets: AssetRegistry = createDefaultRegistry()) {
     this.rng = new Rng(CFG.seed);
     this.ui = new UI(uiRoot);
     this.input = new Input(canvas);
     this.ctx = new RenderContext(canvas);
-    this.assets = createDefaultRegistry();
+    this.assets = assets;
     this.world = new World(this.ctx, this.assets, this.rng.fork());
     this.ctx.water = this.world.water;
     const character = reflectable(this.assets.create('character'));

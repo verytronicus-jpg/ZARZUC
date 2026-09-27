@@ -9,8 +9,8 @@ import { C, flat, merge, paint, solid } from './geo';
  */
 export class PovHandFactory implements AssetFactory {
   create(): THREE.Object3D {
-    const skin = C(0xd49a74);
-    const skinDark = C(0xb07a58);
+    const skin = C(0xd8ae94);
+    const skinDark = C(0xc48f70);
     const parts: THREE.BufferGeometry[] = [];
     // przedramię
     const fore = new THREE.CylinderGeometry(0.034, 0.047, 0.42, 12, 4, false);
@@ -21,7 +21,7 @@ export class PovHandFactory implements AssetFactory {
     const cuff = new THREE.CylinderGeometry(0.056, 0.058, 0.07, 12);
     cuff.rotateX(Math.PI / 2);
     cuff.translate(0, 0, 0.02);
-    parts.push(solid(flat(cuff), C(0xe8dfcc)));
+    parts.push(solid(flat(cuff), C(0xdccfb4)));
     // dłoń
     const palm = new THREE.BoxGeometry(0.085, 0.032, 0.095, 2, 1, 2);
     palm.translate(0, -0.004, 0.455);

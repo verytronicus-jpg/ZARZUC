@@ -618,6 +618,19 @@ export class World {
          transformed.x += sw * ${sway.toFixed(4)} * uWind * hh * hh;
          transformed.z += sw * ${(sway * 0.6).toFixed(4)} * uWind * hh * hh;`,
       );
+      if (m.map && m.alphaTest > 0) {
+        // karty liści: w dalszych mipmapach alfa się uśrednia – podbijamy ją, żeby korony nie „łysiały” z odległością
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <alphatest_fragment>',
+          `{
+             vec2 fdx = dFdx(vMapUv * vec2(1024.0, 512.0));
+             vec2 fdy = dFdy(vMapUv * vec2(1024.0, 512.0));
+             float mip = 0.5 * log2(max(max(dot(fdx, fdx), dot(fdy, fdy)), 1e-6));
+             diffuseColor.a *= 1.0 + max(mip, 0.0) * 0.3;
+           }
+           #include <alphatest_fragment>`,
+        );
+      }
       if (doubleSided) {
         // liście/igły: te same normalne po obu stronach (miękkie cieniowanie, bez czarnych spodów)
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -626,7 +639,7 @@ export class World {
         );
       }
     };
-    m.customProgramCacheKey = () => `veg-${sway}-${doubleSided}`;
+    m.customProgramCacheKey = () => `veg-${sway}-${doubleSided}-${m.map ? 'map' : ''}`;
     return m;
   }
 
