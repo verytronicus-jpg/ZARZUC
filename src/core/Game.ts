@@ -108,6 +108,29 @@ export class Game {
     document.title = CFG.game.title;
   }
 
+  /**
+   * Kompilacja shaderów wszystkich materiałów – także ukrytych (postać, ryba, spławik) – zanim zacznie się gra,
+   * dla obu celów renderu (bufor HDR sceny i ekran/podgląd spławika). Bez tego pierwsze pokazanie obiektu przycina.
+   */
+  private warmUpShaders(): void {
+    const r = this.ctx.renderer;
+    const fish = this.assets.create('fish', { species: 'okon', lengthM: 0.3 });
+    fish.position.set(0, -50, 0);
+    this.ctx.scene.add(fish);
+    const prev = r.getRenderTarget();
+    try {
+      r.setRenderTarget(this.ctx.post.scene);
+      r.compile(this.ctx.scene, this.ctx.camera);
+      r.setRenderTarget(null);
+      r.compile(this.ctx.scene, this.ctx.camera);
+    } catch (err) {
+      console.warn('[Game] Wstępna kompilacja shaderów nie powiodła się', err);
+    } finally {
+      r.setRenderTarget(prev);
+      this.ctx.scene.remove(fish);
+    }
+  }
+
   start(): void {
     this.fsm.start();
     this.loop.start();
@@ -122,6 +145,7 @@ export class Game {
           // tekstury świata muszą być w pamięci, zanim cokolwiek zobaczymy (inaczej czarny teren)
           const timeout = new Promise<void>((r) => setTimeout(r, CFG.render.preloadTimeoutMs));
           void Promise.race([preloadTextures(), timeout]).then(() => {
+            this.warmUpShaders();
             this.ui.hideLoading();
             if (this.fsm.is('BOOT')) this.fsm.go('START_SCREEN');
           });

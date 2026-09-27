@@ -95,6 +95,8 @@ export const CFG = {
     fogColor: 0xd8b49a,
     fogNear: 70,
     fogFar: 720,
+    /** bliska płaszczyzna kamery [m] – większa = dokładniejsza głębia w oddali (AO, refrakcja) */
+    cameraNear: 0.1,
     cameraFar: 3000,
     /** maks. czas czekania na tekstury przed ekranem startowym [ms] */
     preloadTimeoutMs: 8000,
@@ -107,6 +109,10 @@ export const CFG = {
       step: 0.1,
       /** co ile sekund oceniać średni czas klatki */
       interval: 1.5,
+      /** ile okien z rzędu „w celu”, zanim spróbujemy wyższej rozdzielczości */
+      upWindows: 8,
+      /** blokada podnoszenia po nieudanej próbie [s] */
+      cooldown: 60,
     },
     /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
     shadowProxyRadius: 55,
@@ -678,7 +684,7 @@ export const CFG = {
       shadowMapSize: 2048,
       shadowFar: 110,
       shadowRadius: 3,
-      shadowProxyRadius: 65,
+      shadowProxyRadius: 50,
       grassDensity: 1,
       grassRadius: 34,
     },
@@ -746,9 +752,9 @@ export const CFG = {
     segments: 2,
     height: 0.38,
     width: 0.035,
-    maxInstances: 14000,
-    /** co ile metrów ruchu gracza odświeżać zestaw kępek */
-    refreshStep: 3,
+    maxInstances: 20000,
+    /** co ile metrów ruchu gracza odświeżać zestaw kępek (wybór z takim zapasem promienia) */
+    refreshStep: 5,
     colorBase: 0x3a5a1c,
     colorMid: 0x6a8f2e,
     colorTip: 0xc2bb62,

@@ -11,7 +11,14 @@ import { windUniforms } from './wind';
  */
 export class GrassField {
   readonly mesh: THREE.InstancedMesh;
-  private pool: Float32Array; // x, y, z, rotY, scale, tint
+  /** gotowe macierze (16 liczb) i odcienie wszystkich kępek – odświeżanie to tylko kopiowanie */
+  private mats: Float32Array;
+  private tints: Float32Array;
+  private px: Float32Array;
+  private pz: Float32Array;
+  /** siatka przestrzenna: komórka → indeksy kępek */
+  private cells = new Map<number, number[]>();
+  private cellSize = 8;
   private count = 0;
   private focus = new THREE.Vector3(1e9, 0, 1e9);
   readonly uniforms = {
@@ -22,9 +29,30 @@ export class GrassField {
   constructor(candidates: (rng: Rng) => Array<[number, number, number]>, seed: number) {
     const rng = new Rng(seed);
     const pts = candidates(rng);
-    this.pool = new Float32Array(pts.length * 6);
+    const n = pts.length;
+    this.mats = new Float32Array(n * 16);
+    this.tints = new Float32Array(n);
+    this.px = new Float32Array(n);
+    this.pz = new Float32Array(n);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
     pts.forEach(([x, y, z], i) => {
-      this.pool.set([x, y, z, rng.range(0, Math.PI * 2), rng.range(0.7, 1.35), rng.range(0.82, 1.15)], i * 6);
+      const rot = rng.range(0, Math.PI * 2);
+      const s = rng.range(0.7, 1.35);
+      this.tints[i] = rng.range(0.82, 1.15);
+      q.setFromAxisAngle(up, rot);
+      sc.set(s, s * (0.85 + 0.3 * clamp01(s - 0.7)), s);
+      m.compose(p.set(x, y, z), q, sc);
+      m.toArray(this.mats, i * 16);
+      this.px[i] = x;
+      this.pz[i] = z;
+      const key = this.cellKey(Math.floor(x / this.cellSize), Math.floor(z / this.cellSize));
+      let list = this.cells.get(key);
+      if (!list) this.cells.set(key, (list = []));
+      list.push(i);
     });
     const G = CFG.grass;
     const geo = GrassField.clumpGeometry(rng);
@@ -92,6 +120,11 @@ export class GrassField {
     this.mesh.name = 'grass';
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+    this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+  }
+
+  private cellKey(cx: number, cz: number): number {
+    return (cx + 4096) * 8192 + (cz + 4096);
   }
 
   /** Kępka: kilka zakrzywionych, zwężających się źdźbeł z kolorem od ciemnej nasady do złotej końcówki. */
@@ -155,43 +188,55 @@ export class GrassField {
     return g;
   }
 
-  /** Odświeża zestaw rysowanych kępek wokół gracza (co kilka metrów ruchu). */
+  /**
+   * Odświeża zestaw rysowanych kępek wokół gracza (co refreshStep metrów ruchu). Wybór z zapasem refreshStep,
+   * więc między odświeżeniami przód pola nie „łysieje”; przegląd tylko komórek siatki w promieniu.
+   */
   update(player: THREE.Vector3, density: number, radius: number, force = false): void {
     (this.uniforms.uPlayer.value as THREE.Vector3).copy(player);
     this.uniforms.uRadius.value = radius;
-    if (!force && player.distanceToSquared(this.focus) < CFG.grass.refreshStep ** 2) return;
+    const step = CFG.grass.refreshStep;
+    if (!force && player.distanceToSquared(this.focus) < step * step) return;
     this.focus.copy(player);
-    const R2 = radius * radius;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const s = new THREE.Vector3();
-    const p = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-    const col = new THREE.Color();
-    const P = this.pool;
-    const n = P.length / 6;
+    const R = radius + step;
+    const R2 = R * R;
+    const dst = this.mesh.instanceMatrix.array as Float32Array;
+    const col = this.mesh.instanceColor!.array as Float32Array;
     const max = this.mesh.instanceMatrix.count;
+    const cs = this.cellSize;
+    const c0x = Math.floor((player.x - R) / cs);
+    const c1x = Math.floor((player.x + R) / cs);
+    const c0z = Math.floor((player.z - R) / cs);
+    const c1z = Math.floor((player.z + R) / cs);
     let k = 0;
-    // gęstość: deterministycznie co n-ta kępka (hash indeksu), bez migotania przy zmianie presetu
-    for (let i = 0; i < n && k < max; i++) {
-      const dx = P[i * 6] - player.x;
-      const dz = P[i * 6 + 2] - player.z;
-      if (dx * dx + dz * dz > R2) continue;
-      if (((i * 2654435761) >>> 0) / 4294967296 > density) continue;
-      p.set(P[i * 6], P[i * 6 + 1], P[i * 6 + 2]);
-      q.setFromAxisAngle(up, P[i * 6 + 3]);
-      const sc = P[i * 6 + 4];
-      s.set(sc, sc * (0.85 + 0.3 * clamp01(sc - 0.7)), sc);
-      m.compose(p, q, s);
-      this.mesh.setMatrixAt(k, m);
-      col.setScalar(P[i * 6 + 5]);
-      this.mesh.setColorAt(k, col);
-      k++;
+    for (let cx = c0x; cx <= c1x && k < max; cx++) {
+      for (let cz = c0z; cz <= c1z && k < max; cz++) {
+        const list = this.cells.get(this.cellKey(cx, cz));
+        if (!list) continue;
+        for (let j = 0; j < list.length && k < max; j++) {
+          const i = list[j];
+          const dx = this.px[i] - player.x;
+          const dz = this.pz[i] - player.z;
+          if (dx * dx + dz * dz > R2) continue;
+          // gęstość: deterministycznie (hash indeksu) – bez migotania przy zmianie presetu
+          if (((i * 2654435761) >>> 0) / 4294967296 > density) continue;
+          dst.set(this.mats.subarray(i * 16, i * 16 + 16), k * 16);
+          const t = this.tints[i];
+          col[k * 3] = t;
+          col[k * 3 + 1] = t;
+          col[k * 3 + 2] = t;
+          k++;
+        }
+      }
     }
     this.count = k;
     this.mesh.count = k;
+    this.mesh.instanceMatrix.clearUpdateRanges();
+    this.mesh.instanceMatrix.addUpdateRange(0, k * 16);
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.instanceColor!.clearUpdateRanges();
+    this.mesh.instanceColor!.addUpdateRange(0, k * 3);
+    this.mesh.instanceColor!.needsUpdate = true;
   }
 
   get visibleCount(): number {

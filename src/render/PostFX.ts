@@ -70,6 +70,7 @@ export class PostFX {
   private h = 1;
   time = 0;
   private tmpV = new THREE.Vector3();
+  private tmpDir = new THREE.Vector3();
 
   constructor(
     private renderer: THREE.WebGLRenderer,
@@ -125,7 +126,12 @@ export class PostFX {
       uniform vec2 uTexel;
       uniform float uThreshold, uKnee, uClamp;
       varying vec2 vUv;
-      vec3 samp(vec2 o) { return min(texture2D(tColor, vUv + o * uTexel).rgb, vec3(uClamp)); }
+      vec3 samp(vec2 o) {
+        vec3 c = texture2D(tColor, vUv + o * uTexel).rgb;
+        // NaN/Inf (np. z nieudanego obliczenia w materiale) → 0, zamiast świecącej plamy z bloomu
+        c = vec3(c.r < 1e20 && c.r >= 0.0 ? c.r : 0.0, c.g < 1e20 && c.g >= 0.0 ? c.g : 0.0, c.b < 1e20 && c.b >= 0.0 ? c.b : 0.0);
+        return min(c, vec3(uClamp));
+      }
       void main() {
         vec3 c = (samp(vec2(-1.0, -1.0)) + samp(vec2(1.0, -1.0)) + samp(vec2(-1.0, 1.0)) + samp(vec2(1.0, 1.0))) * 0.25;
         float br = max(c.r, max(c.g, c.b));
@@ -185,7 +191,7 @@ export class PostFX {
       uniform mat4 uProjInv;
       uniform mat4 uProj;
       uniform vec2 uTexel;
-      uniform float uRadius, uIntensity, uBias;
+      uniform float uRadius, uIntensity, uBias, uMaxDist;
       varying vec2 vUv;
       vec3 viewPos(vec2 uv) {
         float d = texture2D(tDepth, uv).x;
@@ -202,7 +208,11 @@ export class PostFX {
         vec3 ny = p - viewPos(vUv - vec2(0.0, uTexel.y));
         vec3 dx = abs(px.z) < abs(nx.z) ? px : nx;
         vec3 dy = abs(py.z) < abs(ny.z) ? py : ny;
-        vec3 n = normalize(cross(dx, dy));
+        // daleko głębia jest skwantowana (różnice sąsiadów = 0) → normalize(0) = NaN na GPU; AO i tak niepotrzebne
+        vec3 cr = cross(dx, dy);
+        float crl = length(cr);
+        if (-p.z > uMaxDist || !(crl > 1e-10)) { gl_FragColor = vec4(1.0); return; }
+        vec3 n = cr / crl;
         // promień w ekranie
         vec4 pr = uProj * vec4(uRadius, 0.0, p.z, 1.0);
         float rScreen = clamp(abs(pr.x / pr.w) * 0.5, 0.004, 0.08);
@@ -219,6 +229,8 @@ export class PostFX {
           occ += max(0.0, dot(v, n) - uBias * -p.z * 0.01) / (vv + 0.05) * step(vv, uRadius * uRadius * 4.0);
         }
         float ao = clamp(1.0 - uIntensity * occ / float(N), 0.0, 1.0);
+        ao = mix(ao, 1.0, smoothstep(uMaxDist * 0.6, uMaxDist, -p.z));
+        if (!(ao >= 0.0)) ao = 1.0;
         gl_FragColor = vec4(vec3(ao), 1.0);
       }`,
       {
@@ -229,6 +241,7 @@ export class PostFX {
         uRadius: { value: 0.8 },
         uIntensity: { value: 1 },
         uBias: { value: 0.3 },
+        uMaxDist: { value: 80 },
       },
     );
 
@@ -317,8 +330,11 @@ export class PostFX {
         return s / max(w, 1e-4);
       }
 
+      vec3 safe(vec3 c) {
+        return vec3(c.r < 1e20 && c.r >= 0.0 ? c.r : 0.0, c.g < 1e20 && c.g >= 0.0 ? c.g : 0.0, c.b < 1e20 && c.b >= 0.0 ? c.b : 0.0);
+      }
       void main() {
-        vec3 col = texture2D(tScene, vUv).rgb;
+        vec3 col = safe(texture2D(tScene, vUv).rgb);
         float d = texture2D(tDepth, vUv).x;
         bool sky = d >= 1.0;
         vec4 vp = uProjInv * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
@@ -327,7 +343,10 @@ export class PostFX {
         vec3 ray = wp - uCamPos;
         float dist = length(ray);
         vec3 dir = ray / max(dist, 1e-4);
-        if (uUseAO > 0.5 && !sky) col *= mix(1.0, aoBlur(vUv), uAO);
+        if (uUseAO > 0.5 && !sky) {
+          float ao = aoBlur(vUv);
+          col *= mix(1.0, ao >= 0.0 && ao <= 1.0 ? ao : 1.0, uAO);
+        }
 
         if (!sky) {
           // mgła wysokościowa (całka gęstości wykładniczej wzdłuż promienia) + rozproszenie w stronę słońca
@@ -353,8 +372,8 @@ export class PostFX {
           col = mix(col, fcol, fog);
           col = mix(col, mcol, clamp(mist, 0.0, 0.85));
         }
-        col += texture2D(tBloom, vUv).rgb * uBloom;
-        if (uUseRays > 0.5) col += texture2D(tRays, vUv).rgb * uRays * uSunColor;
+        col += safe(texture2D(tBloom, vUv).rgb) * uBloom;
+        if (uUseRays > 0.5) col += safe(texture2D(tRays, vUv).rgb) * uRays * uSunColor;
         col *= uExposure;
         col = aces(col);
         // grading: lift/gamma/gain
@@ -550,7 +569,7 @@ export class PostFX {
     let rays = 0;
     if (this.settings.rays) {
       const sp = this.tmpV.copy(camera.position).addScaledVector(sunDir, 1000).project(camera);
-      const facing = sunDir.dot(camera.getWorldDirection(new THREE.Vector3()));
+      const facing = sunDir.dot(camera.getWorldDirection(this.tmpDir));
       rays = sp.z < 1 ? THREE.MathUtils.smoothstep(facing, 0.1, 0.6) : 0;
       const ru = this.raysMat.uniforms;
       ru.tColor.value = src;

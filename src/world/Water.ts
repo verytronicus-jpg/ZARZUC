@@ -164,7 +164,7 @@ export class Water {
           float fade = 1.0 / (1.0 + dist * 0.025);
           vec3 n = normalize(n0 + (d1 + d2 * 0.6) * uNormalScale * fade);
           vec3 v = normalize(cameraPosition - vWorld);
-          float ndv = max(dot(n, v), 0.0);
+          float ndv = clamp(dot(n, v), 0.0, 1.0); // pow(ujemna, …) = NaN na GPU
           float fresnel = uF0 + (1.0 - uF0) * pow(1.0 - ndv, 5.0);
 
           // --- odbicie ---

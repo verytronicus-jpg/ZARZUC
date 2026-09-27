@@ -37,7 +37,7 @@ export class RenderContext {
   private lightScale = { ambient: 1, exposure: 1 };
   private size = new THREE.Vector2();
   /** dynamiczna rozdzielczość (mnożnik pixel ratio) */
-  private dyn = { scale: 1, acc: 0, n: 0, last: 0 };
+  private dyn = { scale: 1, acc: 0, n: 0, last: 0, slow: 0, fast: 0, blockUntil: 0, justRaised: false };
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -48,7 +48,7 @@ export class RenderContext {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.info.autoReset = false;
 
-    this.camera = new THREE.PerspectiveCamera(CFG.camera.fov, window.innerWidth / window.innerHeight, 0.05, CFG.render.cameraFar);
+    this.camera = new THREE.PerspectiveCamera(CFG.camera.fov, window.innerWidth / window.innerHeight, CFG.render.cameraNear, CFG.render.cameraFar);
 
     this.hemi = new THREE.HemisphereLight(CFG.sun.hemiSky, CFG.sun.hemiGround, CFG.sun.hemiIntensity);
     this.scene.add(this.hemi);
@@ -85,7 +85,11 @@ export class RenderContext {
     return this.dyn.scale;
   }
 
-  /** Średni czas klatki co kilka sekund → w dół/w górę z rozdzielczością (z histerezą). */
+  /**
+   * Średni czas klatki w oknach po `interval` s. W dół dopiero po 2 wolnych oknach z rzędu; w górę, gdy przez
+   * `upWindows` okien klatki trzymają cel (vsync) – a jeśli po podniesieniu znów zwolni, cofamy i blokujemy
+   * podnoszenie na `cooldown` s. Mało przebudów buforów = brak przycięć.
+   */
   private updateDynamicRes(): void {
     const D = CFG.render.dynamicRes;
     const now = performance.now();
@@ -110,9 +114,24 @@ export class RenderContext {
     const avg = d.acc / d.n;
     d.acc = 0;
     d.n = 0;
+    const slow = avg > D.targetMs * 1.15;
+    const onTarget = avg < D.targetMs * 1.03;
+    d.slow = slow ? d.slow + 1 : 0;
+    d.fast = onTarget ? d.fast + 1 : 0;
     let s = d.scale;
-    if (avg > D.targetMs * 1.08) s = Math.max(D.minScale, s - D.step);
-    else if (avg < D.targetMs * 0.8) s = Math.min(1, s + D.step * 0.5);
+    if (slow && d.justRaised) {
+      // podniesienie nie wyszło – wracamy i nie próbujemy przez chwilę
+      s = Math.max(D.minScale, s - D.step);
+      d.blockUntil = now + D.cooldown * 1000;
+      d.slow = 0;
+    } else if (d.slow >= 2) {
+      s = Math.max(D.minScale, s - D.step);
+      d.slow = 0;
+    } else if (d.fast >= D.upWindows && s < 1 && now > d.blockUntil) {
+      s = Math.min(1, s + D.step);
+      d.fast = 0;
+    }
+    d.justRaised = s > d.scale;
     if (Math.abs(s - d.scale) > 1e-3) {
       d.scale = s;
       this.resize();
