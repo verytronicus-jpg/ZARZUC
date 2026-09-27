@@ -89,7 +89,7 @@ export class ReedFactory implements AssetFactory {
       parts.push(blade(rng.range(0, Math.PI * 2), h, 0.02, rng.range(0.05, 0.2), off, g0, g1));
       if (i % 2 === 0) {
         // kiść (wiecha) – wrzecionowata, lekko opadająca, jasna i pierzasta
-        const plume = new THREE.SphereGeometry(1, 6, 5);
+        const plume = new THREE.SphereGeometry(1, 5, 3);
         plume.scale(0.035, 0.2, 0.05);
         plume.rotateZ(rng.range(0.2, 0.5));
         plume.translate(off.x + 0.06, h + 0.12, off.z);

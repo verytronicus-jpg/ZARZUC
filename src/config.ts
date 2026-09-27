@@ -98,6 +98,16 @@ export const CFG = {
     cameraFar: 3000,
     /** maks. czas czekania na tekstury przed ekranem startowym [ms] */
     preloadTimeoutMs: 8000,
+    /** dynamiczna rozdzielczość: przy wolnych klatkach renderujemy mniej pikseli (min. minScale), potem wracamy */
+    dynamicRes: {
+      enabled: true,
+      /** docelowy czas klatki [ms] (60 FPS) */
+      targetMs: 16.9,
+      minScale: 0.6,
+      step: 0.1,
+      /** co ile sekund oceniać średni czas klatki */
+      interval: 1.5,
+    },
     /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
     shadowProxyRadius: 55,
     shadowProxyStep: 4,
@@ -739,8 +749,8 @@ export const CFG = {
     maxInstances: 14000,
     /** co ile metrów ruchu gracza odświeżać zestaw kępek */
     refreshStep: 3,
-    colorBase: 0x2c4614,
-    colorMid: 0x62872a,
+    colorBase: 0x3a5a1c,
+    colorMid: 0x6a8f2e,
     colorTip: 0xc2bb62,
     sway: 0.16,
     gust: 0.38,

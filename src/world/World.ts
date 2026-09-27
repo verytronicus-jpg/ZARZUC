@@ -542,11 +542,28 @@ export class World {
   private instanced(
     kind: AssetKind,
     list: Inst[],
-    opts: { cast?: boolean; sway?: number; name?: string; reflect?: boolean; detail?: { tex: 'rock' | 'bark' | 'wood'; scale: number; strength: number } } = {},
+    opts: {
+      cast?: boolean;
+      sway?: number;
+      name?: string;
+      reflect?: boolean;
+      detail?: { tex: 'rock' | 'bark' | 'wood'; scale: number; strength: number };
+      /** lżejszy model do cieni (np. średni świerk zamiast bliskiego) */
+      shadowKind?: AssetKind;
+    } = {},
   ): THREE.InstancedMesh[] {
     if (!list.length) return [];
     const src = this.assets.create(kind);
     src.updateMatrixWorld(true);
+    let shadowGeo: THREE.BufferGeometry | null = null;
+    if (opts.shadowKind) {
+      const sh = this.assets.create(opts.shadowKind);
+      sh.updateMatrixWorld(true);
+      sh.traverse((o) => {
+        const mm = o as THREE.Mesh;
+        if (mm.isMesh && !shadowGeo) shadowGeo = mm.geometry.clone().applyMatrix4(mm.matrixWorld);
+      });
+    }
     const out: THREE.InstancedMesh[] = [];
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -580,7 +597,7 @@ export class World {
       this.group.add(im);
       out.push(im);
       if (opts.cast ?? true) {
-        const proxy = new THREE.InstancedMesh(geo, mat, list.length);
+        const proxy = new THREE.InstancedMesh(shadowGeo ?? geo, mat, list.length);
         proxy.layers.set(SHADOW_LAYER);
         proxy.castShadow = true;
         proxy.receiveShadow = false;
@@ -791,7 +808,7 @@ export class World {
       far.push({ x, y: this.terrainAt(x, z) - 0.3, z, rotY: rng.range(0, 6.28), s, sy: rng.range(0.9, 1.3), tint: rng.range(0.75, 1.1) });
     }
 
-    this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false });
+    this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false, shadowKind: 'spruceMid' });
     // w odbiciu wystarczy uproszczony świerk (mniej trójkątów w drugim przebiegu)
     for (const im of this.instanced('spruceMid', near, { cast: false, name: 'spruce_near_reflect' })) im.layers.set(REFLECT_LAYER);
     this.instanced('spruceMid', midCast, { cast: true, sway: 0.0009, name: 'spruce_mid_cast' });

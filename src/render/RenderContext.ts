@@ -36,6 +36,8 @@ export class RenderContext {
   /** mnożniki światła otoczenia i ekspozycji (intro: ciemne wnętrze → oślepienie → norma) */
   private lightScale = { ambient: 1, exposure: 1 };
   private size = new THREE.Vector2();
+  /** dynamiczna rozdzielczość (mnożnik pixel ratio) */
+  private dyn = { scale: 1, acc: 0, n: 0, last: 0 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -74,6 +76,47 @@ export class RenderContext {
     this.updateEnvironment();
 
     window.addEventListener('resize', () => this.resize());
+    // zrzuty/testy: stała rozdzielczość
+    if (new URLSearchParams(location.search).has('fixedres')) CFG.render.dynamicRes.enabled = false;
+  }
+
+  /** Mnożnik rozdzielczości z dynamicznego skalowania (1 = pełna). */
+  get resolutionScale(): number {
+    return this.dyn.scale;
+  }
+
+  /** Średni czas klatki co kilka sekund → w dół/w górę z rozdzielczością (z histerezą). */
+  private updateDynamicRes(): void {
+    const D = CFG.render.dynamicRes;
+    const now = performance.now();
+    const d = this.dyn;
+    if (d.last) {
+      const ms = now - d.last;
+      // pomijamy przestoje (karta w tle, kompilacja shaderów)
+      if (ms < 250) {
+        d.acc += ms;
+        d.n++;
+      }
+    }
+    d.last = now;
+    if (!D.enabled) {
+      if (d.scale !== 1) {
+        d.scale = 1;
+        this.resize();
+      }
+      return;
+    }
+    if (d.acc < D.interval * 1000 || d.n === 0) return;
+    const avg = d.acc / d.n;
+    d.acc = 0;
+    d.n = 0;
+    let s = d.scale;
+    if (avg > D.targetMs * 1.08) s = Math.max(D.minScale, s - D.step);
+    else if (avg < D.targetMs * 0.8) s = Math.min(1, s + D.step * 0.5);
+    if (Math.abs(s - d.scale) > 1e-3) {
+      d.scale = s;
+      this.resize();
+    }
   }
 
   private preset() {
@@ -156,7 +199,7 @@ export class RenderContext {
     const Q = this.preset();
     // budżet pikseli: na ekranach o dużej gęstości nie renderujemy więcej niż pixelBudget
     const dpr = Math.min(window.devicePixelRatio || 1, Q.pixelRatioMax);
-    const pr = Math.max(0.5, Math.min(dpr, Math.sqrt(Q.pixelBudget / Math.max(1, w * h))));
+    const pr = Math.max(0.4, Math.min(dpr, Math.sqrt(Q.pixelBudget / Math.max(1, w * h))) * this.dyn.scale);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
@@ -168,6 +211,7 @@ export class RenderContext {
 
   /** Pełny potok renderu klatki. */
   render(dt: number): void {
+    this.updateDynamicRes();
     const r = this.renderer;
     const cam = this.camera;
     const Q = this.preset();

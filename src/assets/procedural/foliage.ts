@@ -265,16 +265,17 @@ export function spruceCardGeometry(seed: number, lod: SpruceLod): THREE.BufferGe
   const Rmax = 3.3;
   const parts: THREE.BufferGeometry[] = [trunkGeo(H * 0.97, 0.3, 0.04, lod === 'near' ? 8 : 5, 0x4a3121, 0x6a4a30, 1.7)];
   // rdzeń: ciemny stożek wewnątrz korony
-  const cone = new THREE.ConeGeometry(Rmax * 0.62, H * 0.84, lod === 'near' ? 8 : 6, 1, true);
-  cone.translate(0, H * 0.12 + H * 0.42, 0);
+  const cone = new THREE.ConeGeometry(Rmax * 0.62, H * 0.88, lod === 'near' ? 8 : 6, 1, true);
+  cone.translate(0, H * 0.12 + H * 0.44, 0);
   parts.push(opaque(cone, (p, out) => out.set(0x16281a).multiplyScalar(0.8 + 0.4 * clamp01((p.y - H * 0.1) / H))));
   const b = new Builder();
   const whorls = lod === 'near' ? 15 : 9;
   for (let i = 0; i < whorls; i++) {
     const t = i / (whorls - 1);
-    const y = lerp(H * 0.1, H * 0.94, Math.pow(t, 0.92));
-    const R = Rmax * Math.pow(1 - t * 0.96, 0.9) + 0.35;
-    const k = lod === 'near' ? (t > 0.8 ? 4 : t > 0.5 ? 5 : 6) : t > 0.6 ? 3 : 5;
+    // piętra gęstnieją ku wierzchołkowi (bez „talerzy na patyku” pod słońce)
+    const y = lerp(H * 0.1, H * 0.94, Math.pow(t, 0.82));
+    const R = Rmax * Math.pow(1 - t * 0.96, 0.9) + 0.4;
+    const k = lod === 'near' ? (t > 0.5 ? 4 : 5) : t > 0.6 ? 3 : 5;
     const shade = lerp(0.72, 1.08, t);
     for (let j = 0; j < k; j++) {
       const a = (j / k) * Math.PI * 2 + i * 0.93 + rng.range(-0.25, 0.25);
@@ -285,8 +286,8 @@ export function spruceCardGeometry(seed: number, lod: SpruceLod): THREE.BufferGe
         V(0, y + rng.range(-0.15, 0.15), 0),
         a,
         len,
-        len * 0.62,
-        len * lerp(0.42, 0.22, t),
+        len * lerp(0.62, 0.8, t),
+        len * lerp(0.42, 0.18, t),
         lod === 'near' ? 2 : 1,
         ATLAS.spruce,
         (u, out) => out.setScalar(shade * tint * lerp(0.62, 1.12, smoothstep(0.1, 1, u))),

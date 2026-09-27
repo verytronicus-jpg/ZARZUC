@@ -1,7 +1,7 @@
 # CLAUDE.md – przewodnik po repozytorium gry „Zarzuć”
 
 Ten plik czytasz jako pierwszy. Opisuje, czym jest projekt, gdzie co leży, jak to działa i czego nie wolno zepsuć.
-**Aktualne zadanie** jest w [`docs/ZADANIE-v2-chatka.md`](docs/ZADANIE-v2-chatka.md).
+Specyfikacja obecnej wersji (v2 „Chatka nad jeziorem”): [`docs/ZADANIE-v2-chatka.md`](docs/ZADANIE-v2-chatka.md).
 
 ---
 
@@ -12,8 +12,9 @@ Ten plik czytasz jako pierwszy. Opisuje, czym jest projekt, gdzie co leży, jak 
 - Stack: **Three.js + TypeScript + Vite**. Testy: **Vitest**. Brak silnika fizyki – cała fizyka jest ręczna.
 - Jednostki: metry, kilogramy, sekundy, niutony. Oś Y w górę.
 - Język gry i UI: **polski**. Komentarze w kodzie: po polsku. Identyfikatory: po angielsku.
-- Stan: **MVP v0.2** (stary koncept: garaż → auto → parking nad jeziorem). Trwa **przebudowa v2** (chatka nad jeziorem
-  w górach, intro „otwierane drzwi” z perspektywy pierwszej osoby). Szczegóły w `docs/ZADANIE-v2-chatka.md`.
+- Stan: **v2 „Chatka nad jeziorem”**: chatka z bali na polanie nad górskim jeziorem, intro „otwierane drzwi”
+  z perspektywy pierwszej osoby płynnie przechodzące w 3. osobę, grafika na poziomie obrazów z `reference/`
+  (post-processing, odbicia, refrakcja, panorama gór, drzewa z kart, bohater ze szkieletem, ryby z ilustracji).
 
 ## 2. Komendy
 
@@ -23,90 +24,84 @@ npm run dev        # http://localhost:5173
 npm test           # Vitest – musi przechodzić po każdej zmianie
 npm run build      # tsc --noEmit + vite build → dist/ (ścieżki względne, hosting statyczny)
 npm run typecheck
+python3 scripts/prepare_images.py [panorama|textures|foliage|fish|og]   # obrazy z reference/ → public/
 ```
 
 ## 3. Mapa repozytorium
 
 ```
-index.html                  strona: canvas#game + div#ui, meta/og pod zarzuc.com, fonty Lilita One + Nunito
-src/main.ts                 punkt wejścia – tworzy Game i start()
-src/config.ts               ★ WSZYSTKIE liczby do strojenia (edytowalne na żywo w panelu F1). Sekcje niżej.
-src/core/                   szkielet gry
-  Game.ts                   ★ globalna maszyna stanów BOOT → START_SCREEN → CUTSCENE → GAMEPLAY ⇄ PAUSE,
-                            spina wszystkie systemy, pętla fixedUpdate/render, HUD, podgląd spławika (PiP)
-  Loop.ts                   stały krok fizyki 1/60 s (akumulator) + render z interpolacją alpha
-  StateMachine.ts           generyczna FSM: enter/exit/update, czas w stanie, timeout/onTimeout
-  Input.ts                  klawiatura/mysz/pointer lock; krawędzie (consumePress) konsumowane w kroku fizyki,
-                            simulateKey/simulateMouse do testów, recentDownMotion (szarpnięcie myszą)
-  Rng.ts                    seedowany RNG (mulberry32) – powtarzalność
-  Events.ts                 typowany emiter zdarzeń (audio, efekty, HUD)
-  math.ts                   clamp/lerp/damp/smoothstep/fmt (przecinek dziesiętny)
-src/world/                  świat
-  terrainMath.ts            ★ czysta matematyka: kształt jeziora, MAPA GŁĘBOKOŚCI (lakeDepth), łuki trzcin,
-                            wysokość terenu, droga (ROAD), parking, prostokąt pomostu, granice mapy
-  Heightmap.ts              siatka próbek terenu; heightAt() interpoluje po tych samych trójkątach co mesh
-  waves.ts                  ★ fale Gerstnera – JEDNA definicja dla CPU i GPU (GLSL w tym samym pliku)
-  Water.ts                  shader wody (fale, fresnel, kolor z tekstury głębokości)
-  World.ts                  buduje teren, wodę, pomost, instancje (trzciny, drzewa, kamienie, trawa), dom, auto,
-                            parking; zapytania: groundAt, depthAt, waterY, reedDistance, pierDistance, colliders
+index.html                  strona: canvas#game + div#ui, meta/og (og-image.jpg) pod zarzuc.com, fonty
+src/main.ts                 punkt wejścia: rejestr modeli + applyModelManifest (GLB) → new Game → start()
+src/config.ts               ★ WSZYSTKIE liczby do strojenia (edytowalne na żywo w panelu F1)
+src/core/
+  Game.ts                   ★ globalna FSM BOOT → START_SCREEN → INTRO → GAMEPLAY ⇄ PAUSE, spina systemy,
+                            fixedUpdate/render, HUD, podgląd spławika (PiP), setQuality, debug window.__game
+  Loop.ts                   stały krok 1/60 s (akumulator) + render z interpolacją alpha
+  StateMachine.ts, Input.ts, Rng.ts, Events.ts, math.ts
+src/world/
+  terrainMath.ts            ★ czysta matematyka: kształt jeziora (zatoczki, cypel), MAPA GŁĘBOKOŚCI (lakeDepth),
+                            polana i układ chatki (cabinFrame/cabinToWorld), ścieżka, pomost, zwalone drzewo,
+                            granice, structureDistance; testy w tests/world.test.ts
+  Heightmap.ts              niejednorodna siatka próbek (gęsto w obszarze gry); heightAt po tych samych trójkątach
+  waves.ts                  ★ fale Gerstnera – JEDNA definicja dla CPU i GPU
+  Water.ts                  shader wody: refrakcja z głębią, pochłanianie, odbicie planarne/panorama, piana, iskrzenie
+  World.ts                  teren (splatting), woda, pomost, łódka, chatka (+wnętrze, lampa, dym), płotek, las
+                            (bliskie/średnie/dalekie drzewa), trzciny, pałki, grążele, kamienie, podszyt, trawa;
+                            instancje + proxy cieni; zapytania: groundAt, depthAt, reedDistance, structureDistance…
+  GrassField.ts             trawa na wietrze wokół gracza (jeden InstancedMesh, podmuchy, uginanie, zanik)
+  ChimneySmoke.ts, wind.ts  dym z komina, wspólne uniformy wiatru
 src/render/
-  RenderContext.ts          renderer (ACES, sRGB), słońce z cieniami, Hemisphere, Sky, mgła, setQuality()
-  CameraRig.ts              kamera 3. osoby: orbita, ramię sprężynowe z kolizją, tryb holu, startBlend()
-  WaterEffects.ts           plusk (cząsteczki) i kręgi na wodzie – słucha zdarzeń splash/ripple/fishSplash
+  RenderContext.ts          ★ potok renderu (odbicie → scena HDR → refrakcja → woda/FX → PostFX), SunLight
+                            (kaskady cieni), PMREM z nieba, presety jakości, dynamiczna rozdzielczość, PiP
+  PostFX.ts                 bloom, AO, promienie słońca, mgła wysokościowa, mgiełka nad wodą, ACES, grading
+  PlanarReflection.ts       odbicie tafli (kamera lustrzana z płaszczyzną przycinania)
+  SkyDome.ts                kopuła z panoramą gór (public/textures/panorama.jpg)
+  materialsFx.ts            splatting terenu (6 tekstur, mokry brzeg, las z daleka), detal trójplanarny
+  textures.ts               wszystkie tekstury (preload w BOOT)
+  layers.ts                 warstwy: SHADOW(1) proxy cieni, WATER(2), REFLECT(3), FX(4)
+  CameraRig.ts              kamera 3. osoby: orbita, ramię z kolizją (teren + chatka), tryb holu
+  WaterEffects.ts           plusk i kręgi na wodzie
 src/assets/
   AssetRegistry.ts          ★ fabryki modeli + loadGLB(); tabela PIVOTS (nazwy kości/pivotów jak w Blenderze)
+  manifest.ts               public/models/manifest.json → GLB zamiast fabryk (walidacja pivotów, zapas proceduralny)
   index.ts                  rejestr z fabrykami proceduralnymi
-  materials.ts              cache materiałów, mergeStaticChildren (mniej draw calli)
-  procedural/character.ts   postać z brył ze stawami (hips, spine, hand_R …)
-  procedural/tackle.ts      wędka (łańcuch rod_seg_0..5, rod_tip, reel), spławik, haczyk+robak, pudełko robaków
-  procedural/fish.ts        5 gatunków (jedna siatka + kolory wierzchołków), shader pływania i zanik pod wodą
-  procedural/car.ts         auto (klapa trunk_lid, drzwi, koła)            ← do usunięcia w v2
-  procedural/props.ts       dom z garażem, stojak na wędki                  ← do usunięcia/zamiany w v2
+  materials.ts              cache materiałów, mergeStaticChildren
+  procedural/character.ts   bohater (arkusze 01/01b): SkinnedMesh, kości = PIVOTS, kolory wierzchołków
+  procedural/foliage.ts     drzewa i rośliny z kart (atlas foliage.webp): świerk (near/mid), sosna, brzoza,
+                            wierzba, krzak, paproć
+  procedural/nature.ts      daleki las, trzciny, pałki, grążele, głazy, pniak, zwalony pień
+  procedural/cabin.ts       chatka (arkusz 06) z pivotami door_front/door_latch/chimney_top/lantern, łódka
+  procedural/interior.ts    wnętrze chatki (arkusz 07) do intro; povHand.ts – dłoń z perspektywy 1. osoby
+  procedural/tackle.ts      wędka, spławik, haczyk + robak, puszka z robakami (arkusz 03)
+  procedural/fish.ts        5 gatunków: bryła z obrysu ilustracji + rzut ilustracji, płetwy z alfy, pływanie
+  procedural/geo.ts         helpery geometrii (kolory wierzchołków, normalne, scalanie)
 src/player/
-  Player.ts                 kontroler: przyspieszenie/hamowanie, obrót, grawitacja, teren, kolizje, granice
-  CharacterAnimator.ts      proceduralne animacje: chód/bieg + pozy górnej części ciała (UpperPose)
-  collision.ts              okrąg gracza vs okręgi/prostokąty obrócone
-  Interaction.ts            najbliższy obiekt w zasięgu 2 m i w stożku widzenia („[E] …”)
-  Preparation.ts            cele tutorialu, bagażnik, branie wędki/robaków, nabijanie (F)  ← do przebudowy w v2
+  Player.ts                 kontroler: przyspieszenie, obrót, grawitacja, teren/ganek/pomost, kolizje, granice
+  CharacterAnimator.ts      chód/bieg + pozy górne (UpperPose) i dolne (kucanie, rozkrok, wykrok)
+  collision.ts, Interaction.ts
+  Preparation.ts            cele (zejdź nad jezioro → nabij robaka → zarzuć), ekwipunek startowy, nabijanie (F)
 src/fishing/                ★ serce gry – NIE ZMIENIAĆ ZACHOWANIA bez wyraźnej potrzeby
-  FishingController.ts      FSM łowienia (niżej), celowanie, rzut, zestaw w wodzie, brania, zacięcie, hol,
-                            wyciągnięcie; hint dla HUD; forceBite(species?, cm?) do debugowania
-  cast.ts                   balistyka zestawu (grawitacja + opór a = −k|v|v), simulateRange
-  Bobber.ts                 spławik: wyporność z wysokości fali, ustawianie się, leżenie na płyciźnie,
-                            flaga submerged + zdarzenie floatUnder
-  VerletLine.ts             żyłka WIZUALNA (lina Verleta 40 pkt, 10 iteracji)
-  RodController.ts          orientacja wędki + ugięcie szczytówki (sprężyna, 6 segmentów)
-  tension.ts                ★ skalarny model napięcia (k_eff szeregowo, hamulec z bezwładnością szpuli, zerwanie)
-  FightFish.ts              ryba w holu: siły, zrywy gatunku, dążenie do głębi/trzcin, zmęczenie
-  bitePatterns.ts           wzory brań 5 gatunków (siły na spławik, nie animacja)
-  strike.ts                 okna zacięcia, szansa zaczepienia, proces Poissona brań
-  species.ts                wzór długość–waga, losowanie długości/gatunku, dopasowanie do strefy
-  CatchLog.ts               dziennik i rekordy w localStorage (klucz zarzuc.log.v1)
+  FishingController.ts      FSM łowienia, celowanie, rzut, zestaw w wodzie, brania, zacięcie, hol, wyciągnięcie,
+                            ryba w dłoniach po złowieniu; forceBite(species?, cm?) do debugowania
+  cast.ts, Bobber.ts, VerletLine.ts, RodController.ts, tension.ts, FightFish.ts, bitePatterns.ts, strike.ts,
+  species.ts (strefy: głębokość, trzciny, structureBonus), CatchLog.ts
 src/cutscene/
-  Timeline.ts               ★ timeline oparty na danych (ujęcia CatmullRom, akcje, napisy, fade) – DO PONOWNEGO
-                            UŻYCIA w intro v2
-  introScript.ts            dane starej cutscenki (garaż/auto)               ← do usunięcia w v2
-  IntroCutscene.ts          aktorzy starej cutscenki (auto, bagażnik)        ← do usunięcia w v2
+  Timeline.ts               timeline oparty na danych (ujęcia, akcje, napisy, fade, układ lokalny, cameraEnabled)
+  doorIntroScript.ts        ★ scenariusz intro (czasy w CFG.intro)
+  DoorIntro.ts              aktorzy intro: drzwi, zasuwka, dłoń, światło w szparach, oddanie sterowania
 src/ui/
-  UI.ts                     nakładka HTML nad canvasem: cele, status, podpowiedzi, komunikaty, pasek siły,
-                            panel holu, podgląd spławika + znacznik brania, pauza, ekran złowienia, dziennik, debug
-  styles.css                style HUD
-  CatchPreview.ts           obracający się model ryby na ekranie złowienia
-  startscreen/              ekran startowy (2D canvas + deski-przyciski) – zwykły JS, NIE TypeScript
-    startscreen.js          mountStartScreen({title, tagline, domain, species, onCastStart, onStart, onOptions})
-    logo.js                 animowane logo „ZARZUĆ” (litery wpadają do wody, spławik = kreska nad „Ć”)
-    startscreen.css         style ograniczone do #startscreen
-    startscreen.d.ts        typy dla TS
-src/audio/GameAudio.ts      cały dźwięk proceduralny (WebAudio) – reaguje na zdarzenia z Events
+  UI.ts                     nakładka HTML: cele, podpowiedzi, komunikaty, pasek siły, hol, PiP spławika, pauza,
+                            ekran połowu z ilustracją ryby (public/ui/fish), dziennik, debug
+  styles.css
+  startscreen/              ekran startowy (2D canvas) – zwykły JS, NIE TypeScript (+ startscreen.d.ts)
+src/audio/GameAudio.ts      dźwięk proceduralny (WebAudio): las, woda, kroki, zasuwka, skrzypienie drzwi…
 src/debug/DebugPanel.ts     lil-gui z każdym parametrem config.ts
-tests/                      Vitest: species, tension, strike, physics (rzut/fale/spławik/FSM), balance (symulacja holu)
-docs/
-  ZADANIE-v2-chatka.md      ★ AKTUALNE ZADANIE: przebudowa na koncept „chatka nad jeziorem”
-  PROMPTY-OBRAZY.md         prompty do ChatGPT, którymi wygenerowano obrazy referencyjne
-  PROMPT-grafika.md         długofalowy plan podniesienia grafiki (V1–V8) – po v2
-  PROMPT-START.md           tekst startowy dla sesji Claude Code
+scripts/prepare_images.py   obrazy z reference/ → public/ (panorama 360°, tekstury, atlas liści, ryby, og)
+tests/                      Vitest: species, tension, strike, physics, balance, world (układ mapy i łowisk)
+docs/                       ZADANIE-v2-chatka.md (spec v2), PROMPT-grafika.md, PROMPTY-OBRAZY.md, PROMPT-START.md
 reference/                  obrazy referencyjne (koncept, arkusze modeli, ryby, tekstury) – opis w reference/README.md
-public/                     pliki serwowane 1:1 (tu trafią modele GLB, tekstury, obrazy UI)
+public/                     textures/ (panorama, teren, foliage, fish/), ui/fish/ (ilustracje), models/manifest.json,
+                            og-image.jpg
 ```
 
 ## 4. Jak to działa
@@ -117,13 +112,15 @@ public/                     pliki serwowane 1:1 (tu trafią modele GLB, tekstury
 `fixedUpdate` (tylko w GAMEPLAY): klawisze debug → Tab (dziennik) → `player.update` → `fishing.update` →
 `prep.update`. **FSM łowienia jest tykana na końcu `FishingController.update()`**.
 
-`render`: interpolacja postaci → tryb kamery (follow/hol) → `camRig.update` → `fishing.render` → HUD →
-efekty wody → cień → render sceny → podgląd spławika (drugi render w rogu, scissor) → audio.
+`render`: interpolacja postaci → tryb kamery (follow/hol/intro) → `camRig.update` → `fishing.render` → HUD →
+efekty wody → trawa i proxy cieni wokół gracza → `ctx.render` (pełny potok) → podgląd spławika (PiP) → audio.
 `input.endFrame()` czyści krawędzie klawiszy po klatce, w której był krok fizyki.
 
 ### Globalna FSM (`core/Game.ts`)
-`BOOT → START_SCREEN → CUTSCENE → GAMEPLAY ⇄ PAUSE`. Ekran startowy montuje `mountStartScreen`; jego `onStart`
-przechodzi do CUTSCENE. Na START_SCREEN świat 3D nie jest renderowany. W v2 CUTSCENE zastępujemy stanem INTRO.
+`BOOT → START_SCREEN → INTRO → GAMEPLAY ⇄ PAUSE`. BOOT wczytuje tekstury; ekran startowy montuje
+`mountStartScreen`, jego `onStart` przechodzi do INTRO. INTRO (`DoorIntro`) prowadzi kamerę z oczu bohatera,
+w `handoff` stawia postać w miejscu kamery i przekazuje sterowanie (Timeline przestaje sterować kamerą),
+potem kamera 3. osoby płynnie przejmuje widok (`camRig.startBlend`). Esc (przytrzymaj) = pominięcie.
 
 ### FSM łowienia (`fishing/FishingController.ts`)
 `IDLE → AIMING → CHARGING → CASTING → SETTLING → WAITING → NIBBLE → BITE → FIGHT → LANDING → CAUGHT → IDLE`.
@@ -134,14 +131,25 @@ Porażki z komunikatem: `MISSED_EARLY`, `BAIT_STOLEN`, `LINE_SNAPPED`, `FISH_ESC
 - Zacięcie: PPM albo wyraźne szarpnięcie myszą w dół, liczone tylko w oknie BITE.
 - Hol: `TensionModel` + `FightFish`; napięcie liczy model skalarny, lina Verleta jest tylko wizualna.
 
-### Łowiska (ważne przy przebudowie mapy)
-Gatunek zależy od **głębokości z mapy** (`terrainMath.lakeDepth`) i **odległości od trzcin i pomostu**
-(`World.reedDistance`, `World.pierDistance`). Nowa mapa musi dalej dostarczać te dane, żeby płoć/karaś brały
-płytko przy trzcinach, okoń przy pomoście/strukturach, a leszcz i karp głęboko (> 2,5 m).
+### Łowiska
+Gatunek zależy od **głębokości z mapy** (`terrainMath.lakeDepth`) i **odległości od trzcin i struktur**
+(`World.reedDistance`, `World.structureDistance` = pomost, cypel, zwalone drzewo). Płoć/karaś biorą płytko przy
+trzcinach, okoń przy strukturach, leszcz i karp głęboko (> 2,5 m). `tests/world.test.ts` pilnuje układu.
+
+### Grafika
+- Potok: `PlanarReflection` (warstwa REFLECT) → scena warstwy 0 do HDR z MSAA i DepthTexture → kopia koloru
+  i liniowej głębi (refrakcja) → woda i efekty (warstwy WATER/FX) → `PostFX.finish`. Mgła jest w PostFX
+  (`scene.fog = null`), więc nowe materiały nie potrzebują obsługi mgły.
+- Cienie: `SunLight` (2 kaskady) + proxy roślinności na warstwie SHADOW odświeżane wokół gracza.
+- Roślinność: `InstancedMesh` przez `World.instanced(kind, list, opts)` (sway, odbicie, detal, lżejszy model do
+  cieni `shadowKind`); karty liści mają `alphaTest` i podbitą alfę w mipmapach (`vegMaterial`).
+- Presety `CFG.quality.high/low` + `CFG.render.dynamicRes`; `?fixedres` wyłącza dynamiczną rozdzielczość.
 
 ### Modele
-Każdy model powstaje przez `AssetRegistry.create(kind)`. Podmiana na GLB: `registry.loadGLB(kind, url)`.
-Gra odwołuje się wyłącznie do **nazw pivotów z `PIVOTS`** (np. `hand_R`, `rod_tip`, `mouth`). Nowe modele muszą je mieć.
+Każdy model powstaje przez `AssetRegistry.create(kind)`. Podmiana na GLB: wpis w `public/models/manifest.json`
+(wczytywany w `main.ts` przed grą; brak pivotów/błąd → model proceduralny). Gra odwołuje się wyłącznie do
+**nazw pivotów z `PIVOTS`** (np. `hand_R`, `rod_tip`, `mouth`, `door_front`). Bohater proceduralny to
+`SkinnedMesh` z kośćmi o tych nazwach – animator obraca kości, wędka jest doczepiona do `hand_R`.
 
 ## 5. Zasady nienaruszalne
 
@@ -160,7 +168,12 @@ Gra odwołuje się wyłącznie do **nazw pivotów z `PIVOTS`** (np. `hand_R`, `r
   `__game.player.teleport(x, z, yaw)`, `__game.fsm.state`, `__game.loop.timeScale = 4`.
 - **F1** – nakładka (stan gry i łowienia, T [N], L, d, FPS, draw calls) + panel lil-gui; wtedy **B** wymusza branie,
   **1/2/3** = tempo ×0,25/×1/×4.
-- `?logoT=5` w adresie – logo na ekranie startowym od razu w stanie końcowym (zrzuty ekranu).
+- `?logoT=5` w adresie – logo na ekranie startowym od razu w stanie końcowym; `&fixedres` – stała rozdzielczość
+  (zrzuty ekranu). `__cfg.debug.skipRender = true` wyłącza render (szybkie testy logiki w SwiftShaderze).
+- Porównanie z referencjami: zrzuty z ujęć jak w `reference/01-swiat` (01 key art ze ścieżki, 04/08 z pomostu,
+  06 chatka) – po zmianach grafiki zrób zrzut i porównaj światło, kolory wody i roślinności.
+- Edytowanie plików przy włączonym `npm run dev` przeładowuje stronę (HMR) i przerywa trwający zrzut –
+  do długich zrzutów użyj `npm run build` + `npm run preview`.
 - Test w przeglądarce bez GPU (jeśli jest Playwright/Chromium): flagi `--use-gl=angle --use-angle=swiftshader
   --enable-unsafe-swiftshader`. Do wejścia/wyjścia używaj `__game.input.simulateKey/simulateMouse` i odmierzaj
   czas przez `__game.loop.simTime` (software rendering daje kilka FPS).
@@ -170,6 +183,11 @@ Gra odwołuje się wyłącznie do **nazw pivotów z `PIVOTS`** (np. `hand_R`, `r
 
 - Ekran startowy to **zwykły JS** (`startscreen.js`, `logo.js`) wygenerowany z projektu HTML autora – typy
   w `startscreen.d.ts`. Style muszą zostać ograniczone do `#startscreen`.
+- Karty roślin i ryby używają `alphaTest` – przy nowych teksturach z alfą zadbaj o „rozlany” kolor w tle
+  (`bleed` w `prepare_images.py`), inaczej na krawędziach pojawią się ciemne obwódki.
+- `DoubleSide` dla liści usuwa odwracanie normalnych tylnych ścian (łatka `normal_fragment_begin`) – normalne
+  kart ustawia fabryka (`axisNormals`, `puffNormals`).
+- Tint `CFG.post.shadowTint/highlightTint` jest liniowy (`setHex(…, LinearSRGBColorSpace)`).
 - `mergeStaticChildren` scala siatki o tym samym materiale – nie zakładaj, że dzieci modelu to pojedyncze bryły.
 - Pointer lock może być zablokowany (np. w osadzonej ramce) – `Input.lockFailed` przełącza na wolny kursor.
 - `Heightmap.heightAt` musi dzielić komórki na trójkąty tak samo jak siatka terenu w `World.buildTerrain`.

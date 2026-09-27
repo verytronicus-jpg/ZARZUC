@@ -20,7 +20,7 @@ export interface ModelEntry {
 }
 
 /** Pivoty, bez których gra nie może używać modelu danego rodzaju. */
-const REQUIRED: Partial<Record<AssetKind, string[]>> = {
+export const REQUIRED_PIVOTS: Partial<Record<AssetKind, string[]>> = {
   character: [
     PIVOTS.hips, PIVOTS.spine, PIVOTS.neck, PIVOTS.head,
     PIVOTS.upperarmL, PIVOTS.forearmL, PIVOTS.handL, PIVOTS.upperarmR, PIVOTS.forearmR, PIVOTS.handR,
@@ -47,7 +47,7 @@ export async function applyModelManifest(registry: AssetRegistry, url = 'models/
     Object.entries(models).map(async ([key, entry]) => {
       const [kind, species] = key.split(':') as [AssetKind, SpeciesId | undefined];
       try {
-        const ok = await registry.loadGLB(kind, entry.url, entry.scale ?? 1, { species, required: REQUIRED[kind] ?? [] });
+        const ok = await registry.loadGLB(kind, entry.url, entry.scale ?? 1, { species, required: REQUIRED_PIVOTS[kind] ?? [] });
         if (ok) loaded.push(key);
       } catch (err) {
         console.warn(`[modele] Nie udało się wczytać ${entry.url} (${key}) – zostaje model proceduralny`, err);
