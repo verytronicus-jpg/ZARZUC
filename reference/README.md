@@ -24,6 +24,7 @@ Jak czegoś brakuje – nic się nie stanie, agent użyje opisu z `docs/ZADANIE-
 | Plik | Co przedstawia |
 |---|---|
 | `01-bohater-arkusz.jpg` | bohater w A-pozie: przód, bok, tył |
+| `01b-bohater-detale.jpg` | zbliżenia: twarz (2 miny), czapka, ogrodniczki z brelokiem, saszetka |
 | `02-bohater-pozy.jpg` | 4 pozy: zamach, hol, ryba w dłoniach, nabijanie robaka |
 | `03-sprzet.jpg` | wędka, spławik, haczyk z robakiem, pudełko robaków, podbierak, wiadro, skrzynka, stołek |
 | `04-ploc.jpg` | płoć z boku |
@@ -42,8 +43,7 @@ Jak czegoś brakuje – nic się nie stanie, agent użyje opisu z `docs/ZADANIE-
 ## Stan (co już jest)
 
 - **01-swiat:** komplet 1–10 + `04b-gameplay-pomost-siedzi.jpg` (wariant: wędkarz siedzi na pieńku).
-- **02-postacie-i-obiekty:** 03–10 są. **Brakuje 01 i 02 (bohater)** – autor dorzuci.
-  Do tego czasu wzorcem bohatera są kadry `01-swiat/04*.jpg`: starszy wędkarz z siwą brodą, brązowa kurtka
-  z kapturem, kapelusz z rondem, brązowe spodnie z kieszeniami, trzewiki.
+- **02-postacie-i-obiekty:** komplet (01, 01b, 02–10). **Bohater = młody wędkarz w czerwonej beanie i ogrodniczkach**
+  z `01*`/`02*`. Starszy wędkarz z kadrów `01-swiat/04*` jest nieaktualny.
 - **03-tekstury:** brak – autor dorzuci. Do tego czasu tekstury proceduralne/kolory z key artu.
 - Ryby (04–08) są ilustracjami na szarym tle – do UI wytnij tło (np. usuwanie jednolitego tła po kolorze).

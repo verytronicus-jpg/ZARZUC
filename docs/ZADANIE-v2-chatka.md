@@ -20,6 +20,14 @@ Przeczytaj najpierw `CLAUDE.md` (mapa repozytorium i zasady). Obrazy referencyjn
 Klimat: odludne górskie jezioro (Tatry/Beskidy), wczesny letni poranek, mgiełka nad wodą, gęsty las świerkowy,
 skaliste szczyty za jeziorem. Styl: stylizowany, ciepły, „malowany” – spójny z ekranem startowym i logo.
 
+**Bohater (obowiązujący wygląd – `reference/02-postacie-i-obiekty/01*`, `02*`):** młody wędkarz około 30 lat,
+szczupło-atletyczny, ciemne potargane włosy, krótki zarost, ciepły uśmiech; **rdzawoczerwona czapka beanie**,
+kremowy T-shirt z podwiniętymi rękawami, **granatowo-morskie ogrodniczki (wodery)** z musztardowymi szelkami
+krzyżowanymi na plecach, ciemne łaty na kolanach, pas z oliwkową saszetką, zegarek, **brelok ze spławikiem**
+na szelce, zielono-szare kalosze z brązową podeszwą. Pozy w `02-bohater-pozy` (chód, bieg, zamach, hol,
+ryba w dłoniach, nabijanie robaka) to wzorzec animacji. Starszy wędkarz z kadrów `01-swiat/04*` jest NIEAKTUALNY –
+z tych kadrów bierz tylko lokację i klimat.
+
 ## 2. Co zostaje, co znika
 
 **Zostaje bez zmian:** cały `src/fishing/` (rzut, spławik, brania, sygnalizacja brania, hol, hamulec, ryby, dziennik),
@@ -121,7 +129,7 @@ naprawdę pasuje; resztę traktuj jako **wzorzec** kształtu, koloru i proporcji
 | `01-swiat/06-chatka-arkusz.png`, `07-chatka-wnetrze.png` | wzorzec modelu chatki i wnętrza przy drzwiach |
 | `01-swiat/09-panorama-gor.png` | **bezpośrednio**: tło gór (cylinder/kopuła za jeziorem, bez oświetlenia, z mgłą) |
 | `01-swiat/04, 08, 10` | wzorzec: gameplay, brzeg/pomost, woda |
-| `02-postacie-i-obiekty/01,02-bohater-*.png` | wzorzec bohatera (strój: kapelusz, oliwkowa kamizelka, czerwona koszula w kratę, zielone kalosze) |
+| `02-postacie-i-obiekty/01,02-bohater-*.png` | wzorzec bohatera (opis w sekcji 1) + `01b-bohater-detale` (twarz, czapka, ogrodniczki, saszetka) |
 | `02-postacie-i-obiekty/03-sprzet.png` | wzorzec wędki, spławika, pudełka z robakami |
 | `02-postacie-i-obiekty/04–08-*.png` (ryby) | **bezpośrednio**: ilustracje w „Kolekcji ryb” (ekran startowy) i na ekranie złowienia; wzorzec kolorów modeli ryb |
 | `02-postacie-i-obiekty/09-drzewa.png`, `10-roslinnosc-kamienie.png` | wzorzec świerków, brzóz, krzaków, kamieni |
@@ -131,7 +139,7 @@ Obrazy do wdrożenia kopiuj do `public/…` w zoptymalizowanej postaci (WebP/JPG
 Oryginały zostają w `reference/`.
 
 **Modele 3D:** ChatGPT daje tylko obrazy. W v2 **zbuduj lepsze modele proceduralne** (chatka z bali z gontami,
-gankiem i kominem; świerki warstwowe z opadającymi gałęziami; bohater w stroju z referencji) przez `AssetRegistry`.
+gankiem i kominem; świerki warstwowe z opadającymi gałęziami; bohater według `01-bohater-arkusz` (beanie, ogrodniczki, kalosze), pozy według `02-bohater-pozy`) przez `AssetRegistry`.
 Jeśli w `public/models/` pojawią się pliki `.glb` (np. z Meshy/Tripo), podepnij je przez `registry.loadGLB`
 z fallbackiem na proceduralne. Tabela wymaganych pivotów jest w README.
 
@@ -147,7 +155,7 @@ krótkie podsumowanie, **commit**. Gra ma się uruchamiać po każdym kroku.
   cypel, zwalone drzewo), las świerkowy, góry w tle, granice, światło poranka. Struktury → `structureDistance`,
   testy zaktualizowane. Gracz startuje na ganku.
 - **K3 – Intro „otwierane drzwi”.** Według tabeli z sekcji 4, z dźwiękami (zasuwa, skrzypienie, ptaki), pomijalne.
-- **K4 – Obrazy w grze.** Tekstury z `03-tekstury`, panorama gór, ilustracje ryb w kolekcji i na ekranie złowienia,
+- **K4 – Obrazy w grze + skok jakości grafiki.** Etapy V1–V3 z `docs/PROMPT-grafika.md`: światło (HDRI/niebo pod key art, miękkie cienie kaskadowe), post-processing (AO, bloom słońca i odblasków, grading kolorów w ciepły poranek, winieta), mgła i poranna mgiełka nad wodą, lepsza woda (odbicia, piana przy brzegu, przejrzystość z głębią – kamienie dna widoczne jak na `08-brzeg-pomost`), trawa na wietrze. Presety jakości Wysoka/Niska. Tekstury z `03-tekstury`, panorama gór, ilustracje ryb w kolekcji i na ekranie złowienia,
   og-image, strojenie palety, mgły i światła pod key art.
 - **K5 – Lepsze modele.** Chatka, bohater, świerki/brzozy/krzaki/kamienie, ryby – proceduralne według referencji
   (albo GLB, jeśli są). Pivoty jak w `PIVOTS`.
