@@ -115,10 +115,6 @@ export class Input {
     return this.pressed.delete(code);
   }
 
-  consumeRelease(code: string): boolean {
-    return this.released.delete(code);
-  }
-
   held(code: string): boolean {
     return this.enabled && this.keys.has(code);
   }

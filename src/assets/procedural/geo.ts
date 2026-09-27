@@ -116,7 +116,7 @@ export function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /** Trójkąty z listy punktów (wachlarz / pasy) – pomocniczo do liści, płetw itp. */
-export function triangles(points: number[]): THREE.BufferGeometry {
+function triangles(points: number[]): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
   g.computeVertexNormals();

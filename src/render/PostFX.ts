@@ -39,7 +39,7 @@ function rt(w: number, h: number, opts: Partial<THREE.RenderTargetOptions> = {})
   });
 }
 
-export interface PostSettings {
+interface PostSettings {
   msaa: number;
   ao: boolean;
   rays: boolean;

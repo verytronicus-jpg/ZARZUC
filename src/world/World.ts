@@ -2,15 +2,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CFG } from '../config';
 import { Rng } from '../core/Rng';
-import { clamp01, lerp, smoothstep, DEG } from '../core/math';
+import { clamp01, smoothstep, DEG } from '../core/math';
 import { Heightmap } from './Heightmap';
 import { Water } from './Water';
 import { waterHeight, waterHeightFast } from './waves';
 import {
   lakeR,
   lakeDepth,
-  lakeTheta,
-  reedArcMask,
   pierRect,
   distToPier,
   terrainHeightAnalytic,
@@ -19,57 +17,33 @@ import {
   porchHeight,
   pathMask,
   pathPolyline,
-  nearestOnPolyline,
-  clearingMask,
   structureDistance,
   boundsDistance,
-  shoreDistance,
-  porchFoot,
 } from './terrainMath';
 import type { Collider } from '../player/collision';
-import type { AssetKind, AssetRegistry } from '../assets/AssetRegistry';
+import type { AssetRegistry } from '../assets/AssetRegistry';
 import type { RenderContext } from '../render/RenderContext';
+import { flat, paint, solid } from '../assets/procedural/geo';
 import { ChimneySmoke } from './ChimneySmoke';
 import { GrassField } from './GrassField';
 import { windUniforms } from './wind';
+import { buildTerrainMesh } from './TerrainMesh';
+import { Vegetation } from './Vegetation';
+import { VegetationInstancer } from './VegetationInstancer';
 import { cabinLayout } from '../assets/procedural/cabin';
-import { SHADOW_LAYER, REFLECT_LAYER, reflectable } from '../render/layers';
-import { terrainMaterial, triplanarDetail } from '../render/materialsFx';
+import { reflectable } from '../render/layers';
+import { triplanarDetail } from '../render/materialsFx';
 
-export { windUniforms } from './wind';
-
-function colorGeo(geo: THREE.BufferGeometry, hex: number | ((y: number) => THREE.Color)): THREE.BufferGeometry {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  if (g.attributes.uv) g.deleteAttribute('uv');
-  const pos = g.attributes.position;
-  const col = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    if (typeof hex === 'number') c.set(hex);
-    else c.copy(hex(pos.getY(i)));
-    col.set([c.r, c.g, c.b], i * 3);
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return g;
-}
-
-/** Instancja do rozmieszczenia. */
-interface Inst {
-  x: number;
-  y: number;
-  z: number;
-  rotY: number;
-  s: number;
-  sy?: number;
-  tint?: number;
-  rotX?: number;
-  rotZ?: number;
+/** Kolory wierzchołków części konstrukcji (stały kolor albo zależny od wysokości). */
+function colored(g: THREE.BufferGeometry, color: number | ((y: number) => THREE.Color)): THREE.BufferGeometry {
+  const f = flat(g);
+  return typeof color === 'number' ? solid(f, color) : paint(f, (p, _n, out) => out.copy(color(p.y)));
 }
 
 /**
  * Świat „Chatka nad jeziorem”: teren (heightmapa o zmiennym kroku), jezioro z mapą głębokości i przedłużeniem
- * na północ, pomost z łódką, chatka na polanie, ścieżka z płotkiem, las świerkowy (2 poziomy szczegółów
- * + daleki las), brzozy, wierzba, krzaki, paprocie, trzciny, pałki, grążele, kamienie, cypel, zwalone drzewo.
+ * na północ, pomost z łódką, chatka na polanie, ścieżka z płotkiem, zwalone drzewo, roślinność i kamienie
+ * (Vegetation), trawa wokół gracza. Tu są też zapytania o świat dla gracza, łowienia i kamery.
  */
 export class World {
   readonly heightmap: Heightmap;
@@ -81,39 +55,31 @@ export class World {
   boat!: THREE.Object3D;
   lamp: THREE.PointLight | null = null;
   grass!: GrassField;
-  /** układ chatki (stały; liczony raz – kamera pyta o kolizję co klatkę) */
-  private cabinL: ReturnType<typeof cabinLayout> | null = null;
   grassDirty = false;
   smoke!: ChimneySmoke;
   time = 0;
+  /** układ chatki (stały; liczony raz – kamera pyta o kolizję co klatkę) */
+  private cabinL: ReturnType<typeof cabinLayout> | null = null;
   private boatBase = new THREE.Vector3();
-  /** cienie roślinności: tylko instancje blisko gracza (osobne siatki widoczne wyłącznie dla kamery cienia) */
-  private shadowSets: Array<{ mats: Float32Array; proxy: THREE.InstancedMesh; pos: Float32Array }> = [];
-  /** LOD drzew: pełny model tylko blisko gracza, dalej lżejszy (te same instancje, podział co kilka metrów ruchu) */
-  private lodSets: Array<{ full: THREE.InstancedMesh; lod: THREE.InstancedMesh; mats: Float32Array; cols: Float32Array; pos: Float32Array }> = [];
-  private shadowFocus = new THREE.Vector3(1e9, 0, 1e9);
-  /** siatka zajętości dla drzew (min. odstępy) */
-  private occ = new Map<string, number>();
+  private instancer: VegetationInstancer;
 
   constructor(
-    private ctx: RenderContext,
+    ctx: RenderContext,
     private assets: AssetRegistry,
-    private rng: Rng,
+    rng: Rng,
   ) {
     this.heightmap = new Heightmap();
     this.water = new Water(ctx.sunDir, ctx.sun.color, ctx.skyZenith, ctx.skyHorizon);
+    this.instancer = new VegetationInstancer(assets, this.group);
     this.group.name = 'world';
-    this.group.add(this.buildTerrain());
+    this.group.add(buildTerrainMesh(this.heightmap));
     this.group.add(this.water.mesh);
     this.group.add(this.buildPier());
     this.buildBoat();
     this.buildCabin();
     this.buildFence();
     this.buildFallenTree();
-    this.buildReeds();
-    this.buildRocks();
-    this.buildTrees();
-    this.buildUnderstory();
+    new Vegetation(rng, this.heightmap, this.instancer, this.colliders, this.reedPoints).plant();
     this.buildGrass();
     ctx.scene.add(this.group);
   }
@@ -157,14 +123,6 @@ export class World {
     return Math.sqrt(best);
   }
 
-  get pier() {
-    return pierRect();
-  }
-
-  pierDistance(x: number, z: number): number {
-    return distToPier(x, z);
-  }
-
   /** Odległość do struktury dla ryb: pomost, zwalone drzewo, kamienie cypla. */
   structureDistance(x: number, z: number): number {
     return structureDistance(x, z);
@@ -200,7 +158,7 @@ export class World {
 
   /** Preset jakości: gęstość trawy i zasięg cieni roślinności (odświeżenie przy następnej klatce). */
   applyQuality(): void {
-    this.shadowFocus.set(1e9, 0, 1e9);
+    this.instancer.invalidate();
     this.grassDirty = true;
   }
 
@@ -222,181 +180,9 @@ export class World {
     this.smoke?.update(dt);
   }
 
-  /**
-   * Cienie roślinności: do siatek-cieni (warstwa SHADOW_LAYER, niewidoczna dla kamery) trafiają tylko instancje
-   * w promieniu (preset jakości) od punktu – mapa cieni nie przelicza całego lasu.
-   */
-  updateShadowProxies(focus: THREE.Vector3): void {
-    if (focus.distanceToSquared(this.shadowFocus) < CFG.render.shadowProxyStep ** 2) return;
-    this.shadowFocus.copy(focus);
-    const Q = CFG.quality[CFG.quality.current];
-    const R2 = Q.shadowProxyRadius ** 2;
-    for (const set of this.shadowSets) {
-      let n = 0;
-      const N = set.pos.length / 2;
-      const dst = set.proxy.instanceMatrix.array as Float32Array;
-      for (let i = 0; i < N; i++) {
-        const dx = set.pos[i * 2] - focus.x;
-        const dz = set.pos[i * 2 + 1] - focus.z;
-        if (dx * dx + dz * dz > R2) continue;
-        dst.set(set.mats.subarray(i * 16, i * 16 + 16), n * 16);
-        n++;
-      }
-      set.proxy.count = n;
-      set.proxy.instanceMatrix.needsUpdate = true;
-      set.proxy.visible = n > 0;
-      set.proxy.computeBoundingSphere();
-    }
-    // LOD drzew
-    const L2 = Q.treeLodRadius ** 2;
-    for (const set of this.lodSets) {
-      let nf = 0;
-      let nl = 0;
-      const N = set.pos.length / 2;
-      const fm = set.full.instanceMatrix.array as Float32Array;
-      const lm = set.lod.instanceMatrix.array as Float32Array;
-      const fc = set.full.instanceColor!.array as Float32Array;
-      const lc = set.lod.instanceColor!.array as Float32Array;
-      for (let i = 0; i < N; i++) {
-        const dx = set.pos[i * 2] - focus.x;
-        const dz = set.pos[i * 2 + 1] - focus.z;
-        const m = set.mats.subarray(i * 16, i * 16 + 16);
-        const c = set.cols.subarray(i * 3, i * 3 + 3);
-        if (dx * dx + dz * dz <= L2) {
-          fm.set(m, nf * 16);
-          fc.set(c, nf * 3);
-          nf++;
-        } else {
-          lm.set(m, nl * 16);
-          lc.set(c, nl * 3);
-          nl++;
-        }
-      }
-      for (const [im, n] of [
-        [set.full, nf],
-        [set.lod, nl],
-      ] as const) {
-        im.count = n;
-        im.visible = n > 0;
-        im.instanceMatrix.needsUpdate = true;
-        im.instanceColor!.needsUpdate = true;
-        im.computeBoundingSphere();
-      }
-    }
-  }
-
-  // =====================================================================
-  // teren
-  // =====================================================================
-  private buildTerrain(): THREE.Mesh {
-    const hm = this.heightmap;
-    const nx = hm.nx;
-    const nz = hm.nz;
-    const pos = new Float32Array(nx * nz * 3);
-    const col = new Float32Array(nx * nz * 3);
-    // wagi tekstur: A = trawa, ściółka, ścieżka, piasek · B = dno, skała
-    const splatA = new Float32Array(nx * nz * 4);
-    const splatB = new Float32Array(nx * nz * 3);
-    const wgt = [0, 0, 0, 0, 0, 0];
-    const mixTo = (idx: number, k: number) => {
-      for (let q = 0; q < 6; q++) wgt[q] *= 1 - k;
-      wgt[idx] += k;
-    };
-    const grassA = new THREE.Color(0x6f8a2e);
-    const grassB = new THREE.Color(0xa3a340);
-    const grassDry = new THREE.Color(0xb8a456);
-    const forest = new THREE.Color(0x4a4a26);
-    const needles = new THREE.Color(0x6a5230);
-    const sand = new THREE.Color(0xb49a70);
-    const mud = new THREE.Color(0x6a6048);
-    const bed = new THREE.Color(0x8c8466);
-    const deep = new THREE.Color(0x3c4a3a);
-    const path = new THREE.Color(0xa88458);
-    const pathEdge = new THREE.Color(0x8a7040);
-    const rock = new THREE.Color(0x8c8678);
-    const clearing = new THREE.Color(0x9aa244);
-    const canopy = new THREE.Color(0x2f4222);
-    const c = new THREE.Color();
-    const W = CFG.world;
-    for (let j = 0; j < nz; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        const x = hm.xs[i];
-        const z = hm.zs[j];
-        const h = hm.heights[k];
-        pos[k * 3] = x;
-        pos[k * 3 + 1] = h;
-        pos[k * 3 + 2] = z;
-        const r = lakeR(x, z);
-        const n = 0.5 + 0.5 * Math.sin(x * 0.21 + Math.sin(z * 0.13) * 2) * Math.cos(z * 0.17 - x * 0.05);
-        const n2 = 0.5 + 0.5 * Math.sin(x * 0.9 + z * 0.7) * Math.sin(z * 1.1 - x * 0.4);
-        wgt.fill(0);
-        let canopyW = 0;
-        if (r < 1) {
-          const d = -h;
-          const sandW = 1 - smoothstep(0.05, 0.55, d);
-          wgt[3] = sandW;
-          wgt[4] = 1 - sandW;
-          c.copy(bed).lerp(sand, 1 - smoothstep(0.0, 0.5, d)).lerp(mud, smoothstep(0.6, 2.0, d) * 0.6).lerp(deep, smoothstep(1.8, 4.2, d));
-          // jasne kamienie na dnie przy brzegu
-          c.multiplyScalar(0.9 + 0.2 * n2);
-        } else {
-          const bd = boundsDistance(x, z);
-          const forestW = smoothstep(-4, 12, bd) * (1 - clearingMask(x, z));
-          wgt[0] = 1 - forestW;
-          wgt[1] = forestW;
-          c.copy(grassA).lerp(grassB, n).lerp(grassDry, smoothstep(0.55, 1, n2) * 0.45);
-          c.lerp(forest, forestW * 0.75).lerp(needles, forestW * smoothstep(0.4, 0.9, n) * 0.4);
-          c.lerp(clearing, clearingMask(x, z) * 0.5);
-          const shoreW = 1 - smoothstep(1.0, 1.035, r);
-          c.lerp(sand, shoreW);
-          mixTo(3, shoreW);
-          // skalisty cypel
-          const pd = Math.hypot(x - W.pointX, z - W.pointZ) / (W.pointRadius * 1.5);
-          const rockW = (1 - smoothstep(0.3, 1, pd)) * 0.9;
-          c.lerp(rock, rockW * 0.78);
-          mixTo(5, rockW);
-          // ścieżka (udeptana ziemia) z ciemniejszym brzegiem
-          const pm = x > -40 && x < 20 && z > 30 && z < 100 ? pathMask(x, z) : 0;
-          if (pm > 0) {
-            c.lerp(pathEdge, smoothstep(0, 0.5, pm) * 0.6).lerp(path, smoothstep(0.35, 1, pm));
-            mixTo(2, smoothstep(0.15, 0.85, pm));
-          }
-          // las poza obszarem gry: ciemne dno lasu / korony widziane z daleka
-          const far = Math.max(smoothstep(20, 60, bd), smoothstep(8, 30, shoreDistance(x, z, r)) * smoothstep(0, 20, bd));
-          c.lerp(canopy, far * 0.85);
-          canopyW = far;
-          c.multiplyScalar(0.92 + 0.08 * n2);
-        }
-        col.set([c.r, c.g, c.b], k * 3);
-        splatA.set([wgt[0], wgt[1], wgt[2], wgt[3]], k * 4);
-        splatB.set([wgt[4], wgt[5], canopyW], k * 3);
-      }
-    }
-    const idx: number[] = [];
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i; // (i,j)
-        const b = (j + 1) * nx + i; // (i,j+1)
-        const c1 = j * nx + i + 1; // (i+1,j)
-        const d = (j + 1) * nx + i + 1; // (i+1,j+1)
-        // ten sam podział co Heightmap.heightAt
-        idx.push(a, b, c1, c1, b, d);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    geo.setAttribute('aSplatA', new THREE.BufferAttribute(splatA, 4));
-    geo.setAttribute('aSplatB', new THREE.BufferAttribute(splatB, 3));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    geo.computeBoundingSphere();
-    const m = new THREE.Mesh(geo, terrainMaterial());
-    reflectable(m);
-    m.receiveShadow = true;
-    m.name = 'terrain';
-    return m;
+  /** Cienie i LOD roślinności wokół gracza (przeliczane co kilka metrów ruchu). */
+  updateVegetation(focus: THREE.Vector3): void {
+    this.instancer.update(focus);
   }
 
   // =====================================================================
@@ -415,12 +201,12 @@ export class World {
       const base = new THREE.Color(0x9a7650).multiplyScalar(tone);
       g.translate((p.x0 + p.x1) / 2 + rng.range(-0.04, 0.04), p.deck - 0.03, p.z0 + 0.12 + i * (plankW + 0.025));
       g.rotateY(0);
-      parts.push(colorGeo(g, () => base));
+      parts.push(colored(g, () => base));
     }
     for (const x of [p.x0 + 0.12, p.x1 - 0.12]) {
       const beam = new THREE.BoxGeometry(0.14, 0.2, len);
       beam.translate(x, p.deck - 0.16, (p.z0 + p.z1) / 2);
-      parts.push(colorGeo(beam, 0x5e4630));
+      parts.push(colored(beam, 0x5e4630));
       for (let z = p.z0 + 0.15; z < p.z1 - 0.5; z += 2.4) {
         const bottom = terrainHeightAnalytic(x, z) - 0.3;
         const tall = z < p.z0 + 0.5 || Math.abs(z - (p.z0 + 7.35)) < 0.1;
@@ -428,7 +214,7 @@ export class World {
         const h = top - bottom;
         const post = new THREE.CylinderGeometry(0.12, 0.13, h, 8);
         post.translate(x + (x < 0 ? -0.08 : 0.08), bottom + h / 2, z);
-        parts.push(colorGeo(post, (y) => new THREE.Color(0x6a4e34).lerp(new THREE.Color(0x3a3a2a), clamp01((0.1 - y) * 2))));
+        parts.push(colored(post, (y) => new THREE.Color(0x6a4e34).lerp(new THREE.Color(0x3a3a2a), clamp01((0.1 - y) * 2))));
         this.colliders.push({ kind: 'circle', x, z, r: 0.12 });
       }
     }
@@ -436,7 +222,7 @@ export class World {
     for (let z = p.z0 + 0.4; z < p.z1; z += 1.2) {
       const t = new THREE.BoxGeometry(p.x1 - p.x0, 0.12, 0.12);
       t.translate((p.x0 + p.x1) / 2, p.deck - 0.12, z);
-      parts.push(colorGeo(t, 0x5a4230));
+      parts.push(colored(t, 0x5a4230));
     }
     const geo = mergeGeometries(parts, false)!;
     geo.computeVertexNormals();
@@ -528,7 +314,7 @@ export class World {
       const g = new THREE.CylinderGeometry(0.05, 0.06, 1.05, 6);
       g.rotateZ(rng.range(-0.05, 0.05));
       g.translate(p.x, p.y + 0.45, p.z);
-      parts.push(colorGeo(g, wood));
+      parts.push(colored(g, wood));
       this.colliders.push({ kind: 'circle', x: p.x, z: p.z, r: 0.12 });
     }
     for (let i = 1; i < posts.length; i++) {
@@ -542,7 +328,7 @@ export class World {
         g.translate(0, len / 2, 0);
         g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()));
         g.translate(A.x, A.y, A.z);
-        parts.push(colorGeo(g, 0x8a6844));
+        parts.push(colored(g, 0x8a6844));
       }
       // żerdzie blokują przejście
       const mid = a.clone().lerp(b, 0.5);
@@ -579,495 +365,6 @@ export class World {
       if (lakeDepth(x, z) > CFG.world.maxWadeDepth) break;
       this.colliders.push({ kind: 'circle', x, z, r: W.logRadius + 0.1 });
     }
-  }
-
-  // =====================================================================
-  // instancje
-  // =====================================================================
-  /** InstancedMesh z modelu z rejestru (każda siatka modelu → osobny InstancedMesh, wspólne macierze). */
-  private instanced(
-    kind: AssetKind,
-    list: Inst[],
-    opts: {
-      cast?: boolean;
-      sway?: number;
-      name?: string;
-      reflect?: boolean;
-      detail?: { tex: 'rock' | 'bark' | 'wood'; scale: number; strength: number };
-      /** lżejszy model do cieni (np. średni świerk zamiast bliskiego) */
-      shadowKind?: AssetKind;
-    } = {},
-  ): THREE.InstancedMesh[] {
-    if (!list.length) return [];
-    const src = this.assets.create(kind);
-    src.updateMatrixWorld(true);
-    let shadowGeo: THREE.BufferGeometry | null = null;
-    if (opts.shadowKind) {
-      const sh = this.assets.create(opts.shadowKind);
-      sh.updateMatrixWorld(true);
-      sh.traverse((o) => {
-        const mm = o as THREE.Mesh;
-        if (mm.isMesh && !shadowGeo) shadowGeo = mm.geometry.clone().applyMatrix4(mm.matrixWorld);
-      });
-    }
-    const out: THREE.InstancedMesh[] = [];
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const e = new THREE.Euler();
-    const s = new THREE.Vector3();
-    const p = new THREE.Vector3();
-    const col = new THREE.Color();
-    src.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-      const baseMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
-      const mat = this.vegMaterial(baseMat, opts.sway ?? 0);
-      if (opts.detail) triplanarDetail(mat, opts.detail.tex, opts.detail.scale, opts.detail.strength, false);
-      const im = new THREE.InstancedMesh(geo, mat, list.length);
-      list.forEach((it, i) => {
-        e.set(it.rotX ?? 0, it.rotY, it.rotZ ?? 0);
-        q.setFromEuler(e);
-        s.set(it.s, it.s * (it.sy ?? 1), it.s);
-        p.set(it.x, it.y, it.z);
-        m.compose(p, q, s);
-        im.setMatrixAt(i, m);
-        col.setScalar(it.tint ?? 1);
-        im.setColorAt(i, col);
-      });
-      im.castShadow = false;
-      im.receiveShadow = true;
-      im.name = opts.name ?? kind;
-      im.computeBoundingSphere();
-      if (opts.reflect ?? true) im.layers.enable(REFLECT_LAYER);
-      this.group.add(im);
-      out.push(im);
-      if (opts.cast ?? true) {
-        const proxy = new THREE.InstancedMesh(shadowGeo ?? geo, mat, list.length);
-        proxy.layers.set(SHADOW_LAYER);
-        proxy.castShadow = true;
-        proxy.receiveShadow = false;
-        proxy.count = 0;
-        proxy.name = `${im.name}_shadow`;
-        const pos = new Float32Array(list.length * 2);
-        list.forEach((it, i) => {
-          pos[i * 2] = it.x;
-          pos[i * 2 + 1] = it.z;
-        });
-        this.group.add(proxy);
-        this.shadowSets.push({ mats: new Float32Array(im.instanceMatrix.array), proxy, pos });
-      }
-    });
-    return out;
-  }
-
-  /** Materiał roślinności: kopia bazowego + kołysanie na wietrze (instancje) + normalne bez odwracania. */
-  private vegMaterial(base: THREE.MeshStandardMaterial, sway: number): THREE.MeshStandardMaterial {
-    const m = base.clone();
-    const doubleSided = m.side === THREE.DoubleSide;
-    m.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = windUniforms.uTime;
-      shader.uniforms.uWind = windUniforms.uWind;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;').replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-         #ifdef USE_INSTANCING
-           vec2 ip = vec2(instanceMatrix[3].x, instanceMatrix[3].z);
-         #else
-           vec2 ip = vec2(0.0);
-         #endif
-         float sw = sin(uTime * 1.1 + ip.x * 0.31 + ip.y * 0.17) + 0.45 * sin(uTime * 2.3 + ip.x * 0.8 + ip.y * 0.5);
-         float hh = max(position.y, 0.0);
-         transformed.x += sw * ${sway.toFixed(4)} * uWind * hh * hh;
-         transformed.z += sw * ${(sway * 0.6).toFixed(4)} * uWind * hh * hh;`,
-      );
-      if (m.map && m.alphaTest > 0) {
-        // karty liści: w dalszych mipmapach alfa się uśrednia – podbijamy ją, żeby korony nie „łysiały” z odległością
-        shader.fragmentShader = shader.fragmentShader.replace(
-          '#include <alphatest_fragment>',
-          `{
-             vec2 fdx = dFdx(vMapUv * vec2(1024.0, 512.0));
-             vec2 fdy = dFdy(vMapUv * vec2(1024.0, 512.0));
-             float mip = 0.5 * log2(max(max(dot(fdx, fdx), dot(fdy, fdy)), 1e-6));
-             diffuseColor.a *= 1.0 + max(mip, 0.0) * 0.3;
-           }
-           #include <alphatest_fragment>`,
-        );
-      }
-      if (doubleSided) {
-        // liście/igły: te same normalne po obu stronach (miękkie cieniowanie, bez czarnych spodów)
-        shader.fragmentShader = shader.fragmentShader.replace(
-          '#include <normal_fragment_begin>',
-          THREE.ShaderChunk.normal_fragment_begin.replace('normal *= faceDirection;', ''),
-        );
-      }
-    };
-    m.customProgramCacheKey = () => `veg-${sway}-${doubleSided}-${m.map ? 'map' : ''}`;
-    return m;
-  }
-
-  /** Para LOD: te same instancje w pełnym i lżejszym modelu; podział wg odległości w updateShadowProxies. */
-  private lodPair(full: THREE.InstancedMesh, lod: THREE.InstancedMesh, list: Inst[]): void {
-    const pos = new Float32Array(list.length * 2);
-    list.forEach((it, i) => {
-      pos[i * 2] = it.x;
-      pos[i * 2 + 1] = it.z;
-    });
-    for (const im of [full, lod]) {
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      im.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    }
-    this.lodSets.push({
-      full,
-      lod,
-      mats: new Float32Array(full.instanceMatrix.array),
-      cols: new Float32Array(full.instanceColor!.array),
-      pos,
-    });
-    lod.count = 0;
-    lod.visible = false;
-  }
-
-  private key(x: number, z: number, cell: number): string {
-    return `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
-  }
-
-  /** Wolne miejsce (min. odstęp) – prosta siatka zajętości. */
-  private free(x: number, z: number, r: number): boolean {
-    const cell = 2;
-    const cx = Math.floor(x / cell);
-    const cz = Math.floor(z / cell);
-    const n = Math.ceil(r / cell) + 1;
-    for (let i = -n; i <= n; i++)
-      for (let j = -n; j <= n; j++) {
-        const v = this.occ.get(`${cx + i},${cz + j}`);
-        if (v === undefined) continue;
-        const px = (cx + i + 0.5) * cell;
-        const pz = (cz + j + 0.5) * cell;
-        if (Math.hypot(px - x, pz - z) < r + v) return false;
-      }
-    return true;
-  }
-
-  private occupy(x: number, z: number, r: number): void {
-    const k = this.key(x, z, 2);
-    this.occ.set(k, Math.max(this.occ.get(k) ?? 0, r));
-  }
-
-  /** Czy punkt zasłania widok z drzwi chatki na ścieżkę i pomost (korytarz widokowy). */
-  private inViewCorridor(x: number, z: number): number {
-    const c = cabinFrame();
-    const p = pierRect();
-    const px = (p.x0 + p.x1) / 2;
-    const pz = p.z0;
-    // odcinek drzwi → koniec pomostu i dalej na jezioro
-    const vx = px - c.x;
-    const vz = pz - c.z;
-    const L = Math.hypot(vx, vz);
-    const t = ((x - c.x) * vx + (z - c.z) * vz) / (L * L);
-    if (t < 0.05 || t > 1.1) return 0;
-    const lat = Math.abs(((x - c.x) * vz - (z - c.z) * vx) / L);
-    const half = 4 + t * 14;
-    return 1 - smoothstep(half * 0.7, half, lat);
-  }
-
-  /** Wspólne wykluczenia dla drzew i dużych obiektów. */
-  private blockedForTree(x: number, z: number, r: number): boolean {
-    if (lakeR(x, z) < 1.03 + r * 0.02) return true;
-    if (nearestOnPolyline(pathPolyline(), x, z).dist < 3.2 + r) return true;
-    const c = cabinFrame();
-    if (Math.hypot(x - c.x, z - c.z) < CFG.world.clearingRadius + 1.5 + r) return true;
-    if (distToPier(x, z) < 9) return true;
-    const W = CFG.world;
-    if (Math.hypot(x - W.pointX, z - W.pointZ) < W.pointRadius * 1.2) return true;
-    return false;
-  }
-
-  // =====================================================================
-  // las
-  // =====================================================================
-  private buildTrees(): void {
-    const W = CFG.world;
-    const rng = this.rng;
-    const near: Inst[] = [];
-    const midCast: Inst[] = [];
-    const midFar: Inst[] = [];
-    const pines: Inst[] = [];
-    const birches: Inst[] = [];
-    const willows: Inst[] = [];
-    const center = new THREE.Vector2(-8, 40);
-    const addCollider = (x: number, z: number, r: number) => {
-      if (boundsDistance(x, z) < 4) this.colliders.push({ kind: 'circle', x, z, r });
-    };
-
-    // wierzba przy brzegu zachodniej zatoczki, brzozy przy brzegu i skraju polany
-    for (const [x, z] of W.willows) {
-      const y = this.terrainAt(x, z);
-      willows.push({ x, y: y - 0.1, z, rotY: rng.range(0, 6.28), s: rng.range(0.95, 1.1), tint: 1 });
-      this.occupy(x, z, 4);
-      addCollider(x, z, 0.6);
-    }
-    let tries = 0;
-    while (birches.length < W.birchCount && tries++ < 5000) {
-      const x = rng.range(-95, 95);
-      const z = rng.range(-40, 110);
-      const sd = shoreDistance(x, z);
-      const bd = boundsDistance(x, z);
-      if (sd < 3 || sd > 30 || bd < -12 || bd > 14) continue;
-      if (this.blockedForTree(x, z, 0.5) || this.inViewCorridor(x, z) > 0.2 || !this.free(x, z, 3)) continue;
-      birches.push({ x, y: this.terrainAt(x, z) - 0.1, z, rotY: rng.range(0, 6.28), s: rng.range(0.8, 1.15), sy: rng.range(0.9, 1.1), tint: rng.range(0.9, 1.08) });
-      this.occupy(x, z, 2.5);
-      addCollider(x, z, 0.25);
-    }
-    tries = 0;
-    while (pines.length < W.pineCount && tries++ < 5000) {
-      const x = rng.range(-110, 110);
-      const z = rng.range(-60, 140);
-      const bd = boundsDistance(x, z);
-      if (bd < 2 || bd > 40) continue;
-      if (this.blockedForTree(x, z, 1) || !this.free(x, z, 3.5)) continue;
-      pines.push({ x, y: this.terrainAt(x, z) - 0.1, z, rotY: rng.range(0, 6.28), s: rng.range(0.9, 1.25), tint: rng.range(0.9, 1.1) });
-      this.occupy(x, z, 3);
-      addCollider(x, z, 0.35);
-    }
-
-    // świerki: gęsto poza obszarem gracza, rzadko w środku (młode przy ścieżce)
-    tries = 0;
-    let placed = 0;
-    while (placed < W.spruceCount && tries++ < W.spruceCount * 40) {
-      const x = rng.range(W.terrainFineMinX + 4, W.terrainFineMaxX - 4);
-      const z = rng.range(W.terrainFineMinZ + 4, W.terrainFineMaxZ - 4);
-      const bd = boundsDistance(x, z);
-      const inside = bd < 0;
-      const young = inside && rng.chance(0.55);
-      const s = young ? rng.range(0.14, 0.32) : rng.range(0.55, 1.35);
-      const r = young ? 0.8 : 1.6 * s + 0.8;
-      if (this.blockedForTree(x, z, young ? 0 : r)) continue;
-      // gęstość: w obszarze gracza mało, przy granicy gęstnieje
-      const dens = inside ? lerp(0.06, 0.45, smoothstep(-14, 0, bd)) : 1;
-      if (rng.next() > dens) continue;
-      if (!young && this.inViewCorridor(x, z) > 0.05) continue;
-      if (young && this.inViewCorridor(x, z) > 0.7 && rng.chance(0.7)) continue;
-      if (!this.free(x, z, r)) continue;
-      const y = this.terrainAt(x, z) - 0.15;
-      const it: Inst = { x, y, z, rotY: rng.range(0, 6.28), s, sy: rng.range(0.9, 1.15), tint: rng.range(0.82, 1.12) };
-      const dist = Math.hypot(x - center.x, z - center.y);
-      if (dist < W.spruceNearRadius && (bd < 10 || young)) near.push(it);
-      else if (dist < W.spruceNearRadius + 30) midCast.push(it);
-      else midFar.push(it);
-      this.occupy(x, z, r * 0.6);
-      addCollider(x, z, young ? 0.15 : 0.3 * s + 0.1);
-      placed++;
-    }
-
-    // daleki las na zboczach (poza gęstą siatką terenu)
-    const far: Inst[] = [];
-    tries = 0;
-    while (far.length < W.farTreeCount && tries++ < W.farTreeCount * 30) {
-      const x = rng.range(-700, 700);
-      const z = rng.range(-750, 520);
-      const inFine = x > W.terrainFineMinX + 2 && x < W.terrainFineMaxX - 2 && z > W.terrainFineMinZ + 2 && z < W.terrainFineMaxZ - 2;
-      if (inFine) continue;
-      if (lakeR(x, z) < 1.04) continue;
-      const d = Math.hypot(x * 0.8, z + 150);
-      // gęsto na zboczach nad jeziorem, rzadziej w oddali (mgła i tak je wtapia)
-      if (rng.next() > lerp(1, 0.08, smoothstep(180, 620, d))) continue;
-      const s = rng.range(0.9, 1.7) * lerp(1, 1.8, smoothstep(200, 600, d));
-      far.push({ x, y: this.terrainAt(x, z) - 0.3, z, rotY: rng.range(0, 6.28), s, sy: rng.range(0.9, 1.3), tint: rng.range(0.75, 1.1) });
-    }
-
-    const [nearFull] = this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false, shadowKind: 'spruceMid' });
-    const [nearLod] = this.instanced('spruceMid', near, { cast: false, sway: 0.0009, name: 'spruce_near_lod', reflect: false });
-    if (nearFull && nearLod) this.lodPair(nearFull, nearLod, near);
-    // w odbiciu wystarczy uproszczony świerk (mniej trójkątów w drugim przebiegu)
-    for (const im of this.instanced('spruceMid', near, { cast: false, name: 'spruce_near_reflect' })) im.layers.set(REFLECT_LAYER);
-    this.instanced('spruceMid', midCast, { cast: true, sway: 0.0009, name: 'spruce_mid_cast' });
-    this.instanced('spruceMid', midFar, { cast: false, sway: 0.0009, name: 'spruce_mid' });
-    this.instanced('farTree', far, { cast: false, name: 'far_trees' });
-    this.instanced('pine', pines, { cast: true, sway: 0.0006, name: 'pines' });
-    this.instanced('birch', birches, { cast: true, sway: 0.002, name: 'birches' });
-    this.instanced('willow', willows, { cast: true, sway: 0.004, name: 'willow' });
-    console.info(`[World] drzewa: bliskie ${near.length}, średnie ${midCast.length}+${midFar.length}, dalekie ${far.length}, sosny ${pines.length}, brzozy ${birches.length}`);
-  }
-
-  // =====================================================================
-  // podszyt: krzaki, paprocie, pniaki
-  // =====================================================================
-  private buildUnderstory(): void {
-    const W = CFG.world;
-    const rng = this.rng;
-    const bushes: Inst[] = [];
-    const ferns: Inst[] = [];
-    const stumps: Inst[] = [];
-    let tries = 0;
-    while (bushes.length < W.bushCount && tries++ < W.bushCount * 60) {
-      const x = rng.range(W.terrainFineMinX + 5, W.terrainFineMaxX - 5);
-      const z = rng.range(W.terrainFineMinZ + 5, W.terrainFineMaxZ - 5);
-      const bd = boundsDistance(x, z);
-      if (bd < -10 || bd > 16) continue;
-      if (lakeR(x, z) < 1.02 || pathMask(x, z) > 0 || nearestOnPolyline(pathPolyline(), x, z).dist < 1.6) continue;
-      if (Math.hypot(x - cabinFrame().x, z - cabinFrame().z) < 7) continue;
-      if (distToPier(x, z) < 4 || this.inViewCorridor(x, z) > 0.9) continue;
-      bushes.push({ x, y: this.terrainAt(x, z) - 0.05, z, rotY: rng.range(0, 6.28), s: rng.range(0.7, 1.5), sy: rng.range(0.75, 1.1), tint: rng.range(0.85, 1.12) });
-    }
-    tries = 0;
-    while (ferns.length < W.fernCount && tries++ < W.fernCount * 60) {
-      const x = rng.range(W.terrainFineMinX + 5, W.terrainFineMaxX - 5);
-      const z = rng.range(W.terrainFineMinZ + 5, W.terrainFineMaxZ - 5);
-      const bd = boundsDistance(x, z);
-      if (bd < -6 || bd > 30) continue;
-      if (lakeR(x, z) < 1.04 || nearestOnPolyline(pathPolyline(), x, z).dist < 1.3) continue;
-      if (Math.hypot(x - cabinFrame().x, z - cabinFrame().z) < 6.5) continue;
-      ferns.push({ x, y: this.terrainAt(x, z) - 0.03, z, rotY: rng.range(0, 6.28), s: rng.range(0.6, 1.2), tint: rng.range(0.85, 1.1) });
-    }
-    tries = 0;
-    while (stumps.length < W.stumpCount && tries++ < 4000) {
-      const x = rng.range(-100, 100);
-      const z = rng.range(-50, 130);
-      const bd = boundsDistance(x, z);
-      if (bd < -8 || bd > 12) continue;
-      if (this.blockedForTree(x, z, 0) || !this.free(x, z, 1)) continue;
-      stumps.push({ x, y: this.terrainAt(x, z) - 0.05, z, rotY: rng.range(0, 6.28), s: rng.range(0.7, 1.2) });
-      this.occupy(x, z, 0.8);
-      if (bd < 2) this.colliders.push({ kind: 'circle', x, z, r: 0.4 });
-    }
-    this.instanced('bush', bushes, { cast: true, sway: 0.03, name: 'bushes', reflect: false });
-    this.instanced('fern', ferns, { cast: false, sway: 0.06, name: 'ferns', reflect: false });
-    this.instanced('stump', stumps, { cast: true, name: 'stumps', reflect: false, detail: { tex: 'bark', scale: 1.4, strength: 0.4 } });
-  }
-
-  // =====================================================================
-  // brzeg: trzciny, pałki, grążele
-  // =====================================================================
-  private buildReeds(): void {
-    const W = CFG.world;
-    const rng = this.rng;
-    const reeds: Inst[] = [];
-    const cattails: Inst[] = [];
-    const lilies: Inst[] = [];
-    let tries = 0;
-    while (reeds.length < W.reedCount && tries++ < W.reedCount * 40) {
-      const arc = W.reedArcs[rng.int(0, W.reedArcs.length - 1)];
-      const th = (arc.angleDeg + rng.range(-1, 1) * arc.halfWidthDeg) * DEG;
-      const rr = rng.range(0.8, 1.2);
-      const x = W.lakeRx * Math.cos(th) * rr * 1.1;
-      const z = W.lakeRz * Math.sin(th) * rr * 1.1;
-      const mask = reedArcMask(lakeTheta(x, z));
-      if (rng.next() > mask) continue;
-      const d = lakeDepth(x, z);
-      const sd = shoreDistance(x, z);
-      if (d > 0.95 || sd > 1.8) continue;
-      if (distToPier(x, z) < 2.5 || nearestOnPolyline(pathPolyline(), x, z).dist < 2) continue;
-      const y = this.terrainAt(x, z);
-      const k = rng.range(0.75, 1.25);
-      reeds.push({ x, y, z, rotY: rng.range(0, 6.28), s: k, sy: rng.range(0.8, 1.2) * (d > 0.05 ? 1 : 0.85), tint: rng.range(0.85, 1.12) });
-      if (reeds.length % 3 === 0) this.reedPoints.push({ x, z });
-    }
-    // kępka trzcin przy pomoście (od strony zachodniej) – jak na 08-brzeg-pomost
-    const p = pierRect();
-    for (let i = 0; i < 60; i++) {
-      const x = p.x0 - rng.range(2.5, 9);
-      const z = p.shoreZ + rng.range(-3.5, 1);
-      const d = lakeDepth(x, z);
-      if (d > 0.7) continue;
-      reeds.push({ x, y: this.terrainAt(x, z), z, rotY: rng.range(0, 6.28), s: rng.range(0.7, 1.1), sy: rng.range(0.7, 1.05), tint: rng.range(0.9, 1.1) });
-      if (i % 3 === 0) this.reedPoints.push({ x, z });
-    }
-    tries = 0;
-    while (cattails.length < W.cattailCount && tries++ < W.cattailCount * 60) {
-      const useArc = rng.chance(0.75);
-      let x: number;
-      let z: number;
-      if (useArc) {
-        const arc = W.reedArcs[rng.int(0, W.reedArcs.length - 1)];
-        const th = (arc.angleDeg + rng.range(-1, 1) * arc.halfWidthDeg * 1.1) * DEG;
-        const rr = rng.range(0.9, 1.15);
-        x = W.lakeRx * Math.cos(th) * rr * 1.1;
-        z = W.lakeRz * Math.sin(th) * rr * 1.1;
-      } else {
-        x = p.x0 - rng.range(1.5, 6);
-        z = p.shoreZ + rng.range(-1, 2);
-      }
-      const d = lakeDepth(x, z);
-      const sd = shoreDistance(x, z);
-      if (d > 0.45 || sd > 1.2 || sd < -4) continue;
-      if (distToPier(x, z) < 1.2) continue;
-      cattails.push({ x, y: this.terrainAt(x, z), z, rotY: rng.range(0, 6.28), s: rng.range(0.8, 1.15), tint: rng.range(0.9, 1.1) });
-    }
-    tries = 0;
-    while (lilies.length < W.lilyCount && tries++ < W.lilyCount * 80) {
-      const nearPier = rng.chance(0.3);
-      let x: number;
-      let z: number;
-      if (nearPier) {
-        x = p.x0 - rng.range(0.5, 7);
-        z = rng.range(p.z0 + 1, p.shoreZ - 1);
-      } else {
-        const arc = W.reedArcs[rng.int(0, W.reedArcs.length - 1)];
-        const th = (arc.angleDeg + rng.range(-1, 1) * arc.halfWidthDeg) * DEG;
-        const rr = rng.range(0.7, 0.95);
-        x = W.lakeRx * Math.cos(th) * rr * 1.1;
-        z = W.lakeRz * Math.sin(th) * rr * 1.1;
-      }
-      const d = lakeDepth(x, z);
-      if (d < 0.35 || d > 1.8) continue;
-      lilies.push({ x, y: CFG.water.level + 0.03, z, rotY: rng.range(0, 6.28), s: rng.range(0.8, 1.4) });
-    }
-    this.instanced('reeds', reeds, { cast: true, sway: 0.03, name: 'reeds' });
-    this.instanced('cattail', cattails, { cast: true, sway: 0.03, name: 'cattails' });
-    this.instanced('lily', lilies, { cast: false, name: 'lilies', reflect: false });
-  }
-
-  // =====================================================================
-  // kamienie: brzeg, cypel, las
-  // =====================================================================
-  private buildRocks(): void {
-    const W = CFG.world;
-    const rng = this.rng;
-    const rocks: Inst[] = [];
-    // cypel: duże głazy na lądzie i w wodzie
-    for (let i = 0; i < W.pointRockCount; i++) {
-      const a = rng.range(0, Math.PI * 2);
-      const r = Math.sqrt(rng.next()) * W.pointRadius * 1.25;
-      const x = W.pointX + Math.cos(a) * r;
-      const z = W.pointZ + Math.sin(a) * r * 0.8;
-      const d = lakeDepth(x, z);
-      const k = rng.range(0.5, 1.5) * (d > 0.4 ? 0.9 : 1.15);
-      const y = this.terrainAt(x, z) - k * 0.25;
-      rocks.push({ x, y, z, rotY: rng.range(0, 6.28), s: k, sy: rng.range(0.55, 0.85), tint: rng.range(0.85, 1.1), rotX: rng.range(-0.2, 0.2), rotZ: rng.range(-0.2, 0.2) });
-      if (d < W.maxWadeDepth && k > 0.6) this.colliders.push({ kind: 'circle', x, z, r: 0.75 * k });
-    }
-    // brzeg: kamienie w płytkiej wodzie i na skarpie (poza trzcinami i pomostem)
-    let tries = 0;
-    while (rocks.length < W.pointRockCount + W.rockCount && tries++ < 20000) {
-      const x = rng.range(-110, 110);
-      const z = rng.range(-120, 120);
-      const sd = shoreDistance(x, z);
-      const inWater = sd < 0;
-      if (sd < -5 || sd > 60) continue;
-      const shoreBand = sd > -4 && sd < 3;
-      if (!shoreBand && rng.chance(0.75)) continue;
-      if (reedArcMask(lakeTheta(x, z)) > 0.3 && shoreBand) continue;
-      if (distToPier(x, z) < 2.5 || nearestOnPolyline(pathPolyline(), x, z).dist < 2.2) continue;
-      if (Math.hypot(x - cabinFrame().x, z - cabinFrame().z) < 9) continue;
-      if (this.inViewCorridor(x, z) > 0.8 && !shoreBand) continue;
-      const k = shoreBand ? rng.range(0.25, 0.8) : rng.range(0.5, 1.6);
-      const y = this.terrainAt(x, z) - k * (inWater ? 0.35 : 0.2);
-      rocks.push({ x, y, z, rotY: rng.range(0, 6.28), s: k, sy: rng.range(0.5, 0.85), tint: rng.range(0.8, 1.1), rotX: rng.range(-0.15, 0.15), rotZ: rng.range(-0.15, 0.15) });
-      if (!inWater && k > 0.55) this.colliders.push({ kind: 'circle', x, z, r: 0.7 * k });
-      if (!inWater) this.occupy(x, z, k);
-    }
-    // kilka dużych głazów przy ścieżce (pierwszy plan key artu)
-    const foot = porchFoot();
-    for (const [dx, dz, k] of W.pathBoulders) {
-      const x = foot.x + dx;
-      const z = foot.z + dz;
-      if (nearestOnPolyline(pathPolyline(), x, z).dist < 1.2 + k) continue;
-      rocks.push({ x, y: this.terrainAt(x, z) - k * 0.2, z, rotY: rng.range(0, 6.28), s: k, sy: 0.7, tint: 1 });
-      this.colliders.push({ kind: 'circle', x, z, r: 0.8 * k });
-      this.occupy(x, z, k * 1.2);
-    }
-    this.instanced('rock', rocks, { cast: true, name: 'rocks', detail: { tex: 'rock', scale: 0.45, strength: 0.55 } });
   }
 
   // =====================================================================

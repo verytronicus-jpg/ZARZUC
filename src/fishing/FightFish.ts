@@ -16,7 +16,7 @@ export interface FishEnv {
   nearestReed(x: number, z: number): { x: number; z: number } | null;
 }
 
-export interface FishStepInput {
+interface FishStepInput {
   T: number;
   /** jednostkowy kierunek od ryby do szczytówki */
   toTip: THREE.Vector3;

@@ -66,6 +66,7 @@ npm run dev        # serwer deweloperski (http://localhost:5173)
 npm run build      # typecheck + build → statyczny folder dist/
 npm run preview    # podgląd zbudowanego dist/
 npm test           # testy jednostkowe (Vitest)
+npm run check      # typecheck (bez nieużywanego kodu) + testy – przed każdym commitem
 ```
 
 `dist/` używa ścieżek względnych — można go wrzucić na dowolny serwer statyczny (albo otworzyć przez `npm run preview`).
@@ -77,7 +78,7 @@ Wymagana przeglądarka z WebGL 2.
 |---|---|
 | **WASD**, **Shift** | ruch, bieg |
 | **Mysz** | kamera (kliknij w obraz, aby przechwycić kursor; gdy przeglądarka/ramka blokuje pointer lock, gra przechodzi w tryb wolnego kursora) |
-| **E** / **Spacja** | wyciągnięcie ryby (gdy zmęczona i blisko – na środku ekranu pojawi się „Wyciągnij rybę”) · **E**: interakcje |
+| **E** / **Spacja** | wyciągnięcie ryby (gdy zmęczona i blisko – na środku ekranu pojawi się „Wyciągnij rybę”) |
 | **F** (przytrzymaj 1,5 s) | nabicie robaka |
 | **LPM** (przytrzymaj) | rzut — pasek siły waha się 0→100%→0 · w wodzie: zwijanie (pusty zestaw ~3 m/s, w holu 0,8 m/s) |
 | **LPM** (klik w chwili brania), **PPM**, **Spacja** | zacięcie (albo szybkie szarpnięcie myszą w dół) – na środku ekranu pojawia się „BIERZE!” |
@@ -124,13 +125,15 @@ src/
                    SkyDome (panorama 360°), materialsFx (splatting terenu, detal trójplanarny), textures,
                    layers, CameraRig, WaterEffects
   world/           terrainMath (jezioro, MAPA GŁĘBOKOŚCI, polana, ścieżka, pomost, cypel, zwalone drzewo),
-                   Heightmap, waves (Gerstner – wspólny dla CPU i GPU), Water (shader), World (teren, las,
-                   roślinność, chatka, pomost, łódka), GrassField (trawa na wietrze), ChimneySmoke, wind
+                   Heightmap, waves (Gerstner – wspólny dla CPU i GPU), Water (shader), World (składa świat
+                   i odpowiada na zapytania), TerrainMesh (siatka terenu ze splattingiem), Vegetation (rozmieszczenie
+                   lasu, trzcin i kamieni), VegetationInstancer (instancje, cienie i LOD wokół gracza),
+                   GrassField (trawa na wietrze), ChimneySmoke, wind
   assets/          AssetRegistry (fabryki + loadGLB), manifest (GLB z public/models), procedural/*: bohater
                    (SkinnedMesh), chatka i wnętrze, dłoń do intro, drzewa i rośliny z kart (foliage), przyroda,
                    sprzęt, ryby z ilustracji
   player/          Player (kontroler), CharacterAnimator (chód/bieg, pozy górne i dolne), collision,
-                   Interaction, Preparation (cele, ekwipunek startowy, nabijanie)
+                   Preparation (cele, ekwipunek startowy, nabijanie)
   fishing/         FishingController (FSM łowienia), cast, Bobber, VerletLine, RodController,
                    tension (skalarny model napięcia), FightFish, bitePatterns, strike (Poisson + okna),
                    species, CatchLog
@@ -217,7 +220,7 @@ Reszta gry odwołuje się wyłącznie do **nazw pivotów/kości**:
 | postać | kości `hips`, `spine`, `neck`, `head`, `upperarm_L/R`, `forearm_L/R`, **`hand_L`**, **`hand_R`**, `thigh_L/R`, `shin_L/R`, `foot_L/R` |
 | wędka | `rod_seg_0` … `rod_seg_5` (łańcuch szczytówki), **`rod_tip`**, **`reel`**, `reel_handle` |
 | spławik | `float_top` (origin = dół korpusu, oś +Y) |
-| ryba | **`mouth`**, siatka `fish_body` (materiał z `fishMaterial()` daje falowanie i zanik pod wodą) |
+| ryba | **`mouth`**, siatka `fish_body` (falowanie ogona i zanik pod wodą ma model proceduralny; GLB – własna animacja) |
 | chatka | `door_front` (zawias drzwi), `door_latch`, `chimney_top` |
 
 Konwencje: 1 jednostka = 1 m; origin postaci między stopami; przód modelu = **+Z w three.js** (w Blenderze

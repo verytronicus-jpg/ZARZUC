@@ -3,7 +3,7 @@ import { PIVOTS } from '../assets/AssetRegistry';
 import { CFG } from '../config';
 import { clamp01, damp, lerp } from '../core/math';
 
-export type UpperPose =
+type UpperPose =
   | 'none'
   | 'holdRod'
   | 'reach'

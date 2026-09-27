@@ -14,7 +14,7 @@ import { axisNormals, C, flat, jitter, loft, merge, paint, solid } from './geo';
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 /** Materiał roślinności: kolory wierzchołków, obustronny, bez odwracania normalnych tylnych ścian. */
-export function vegetationBaseMaterial(): THREE.MeshStandardMaterial {
+function vegetationBaseMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
 }
 
@@ -165,7 +165,7 @@ export class LilyFactory implements AssetFactory {
 // ---------------------------------------------------------------------------
 // kamienie, pniaki, zwalony pień
 // ---------------------------------------------------------------------------
-export function rockGeometry(seed: number, detail = 2): THREE.BufferGeometry {
+function rockGeometry(seed: number, detail = 2): THREE.BufferGeometry {
   const rng = new Rng(seed);
   // zaokrąglony głaz (arkusz 10): gładkie normalne, płaski spód, mech na wierzchu
   let g: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, detail);

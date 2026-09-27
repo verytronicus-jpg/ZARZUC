@@ -39,13 +39,6 @@ export function cylZ(r0: number, r1: number, len: number, seg = 8): THREE.Buffer
   return g;
 }
 
-/** Kapsuła wisząca w dół od punktu (0,0,0) do (0,-len,0). */
-export function limb(radius: number, len: number): THREE.BufferGeometry {
-  const g = new THREE.CapsuleGeometry(radius, Math.max(0.001, len - radius * 2), 4, 10);
-  g.translate(0, -len / 2, 0);
-  return g;
-}
-
 export function group(name: string, x = 0, y = 0, z = 0): THREE.Group {
   const g = new THREE.Group();
   g.name = name;

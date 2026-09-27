@@ -87,14 +87,8 @@ export const CFG = {
   },
 
   render: {
-    pixelRatioMax: 1.75,
+    /** ekspozycja tone mappingu renderera (podgląd spławika; obraz główny: CFG.post.exposure) */
     exposure: 0.78,
-    shadowMapSize: 2048,
-    shadowBox: 40,
-    /** mgła: kolor ciepłej porannej mgiełki (dopasowany do dołu panoramy) */
-    fogColor: 0xd8b49a,
-    fogNear: 70,
-    fogFar: 720,
     /** bliska płaszczyzna kamery [m] – większa = dokładniejsza głębia w oddali (AO, refrakcja) */
     cameraNear: 0.1,
     cameraFar: 3000,
@@ -116,8 +110,7 @@ export const CFG = {
       /** gdy nawet minScale nie wystarcza – przejście na preset „Niska” */
       autoLowPreset: true,
     },
-    /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
-    shadowProxyRadius: 55,
+    /** cienie roślinności i LOD drzew odświeżane co tyle metrów ruchu gracza (promienie w CFG.quality) */
     shadowProxyStep: 4,
   },
 
@@ -305,7 +298,6 @@ export const CFG = {
     spruceNearRadius: 88,
     pineCount: 40,
     birchCount: 26,
-    willowCount: 3,
     bushCount: 260,
     fernCount: 360,
     rockCount: 90,
@@ -388,7 +380,6 @@ export const CFG = {
     turnRate: 10,
     gravity: G,
     radius: 0.35,
-    height: 1.8,
     maxStepUp: 0.45,
     stepLengthWalk: 0.75,
     stepLengthRun: 1.2,
@@ -411,12 +402,6 @@ export const CFG = {
     fightDistance: 5.6,
     fightHeight: 2.2,
     shakeAmount: 0.06,
-    followLag: 12,
-  },
-
-  interaction: {
-    range: 2,
-    coneDeg: 70,
   },
 
   prep: {
@@ -567,7 +552,6 @@ export const CFG = {
     rampTime: 5,
     rampStart: 0.25,
     lyingFloatFactor: 0.35,
-    noBaitFactor: 0,
     waitTimeout: 150,
     spookCooldown: 6,
     /** zacięcie podczas NIBBLE */
@@ -861,8 +845,6 @@ export const CFG = {
     },
   ] as SpeciesConfig[],
 };
-
-export type Config = typeof CFG;
 
 export function speciesById(id: SpeciesId): SpeciesConfig {
   const s = CFG.species.find((x) => x.id === id);

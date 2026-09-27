@@ -1,7 +1,7 @@
 /** Balistyka zestawu (spławik + śrucina + haczyk): grawitacja + kwadratowy opór powietrza a = -k|v|v. */
 import { lerp, DEG } from '../core/math';
 
-export interface CastConfig {
+interface CastConfig {
   vMin: number;
   vMax: number;
   angleDeg: number;
@@ -9,7 +9,7 @@ export interface CastConfig {
   airDragK: number;
 }
 
-export interface Vec3 {
+interface Vec3 {
   x: number;
   y: number;
   z: number;

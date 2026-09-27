@@ -14,7 +14,7 @@ import { PIVOTS, type AssetKind, type AssetRegistry } from './AssetRegistry';
  * Klucz = rodzaj z AssetKind (ryby: `fish:<gatunek>`, skala = długość 1 m). Model bez wymaganych pivotów
  * (nazwy z PIVOTS) albo nieudane wczytanie → zostaje model proceduralny (ostrzeżenie w konsoli).
  */
-export interface ModelEntry {
+interface ModelEntry {
   url: string;
   scale?: number;
 }

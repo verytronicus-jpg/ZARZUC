@@ -15,7 +15,7 @@ import { group } from '../materials';
  */
 
 /** Obszary atlasu (u0, u1, v0, v1); v = 1 u góry obrazu. */
-export const ATLAS = {
+const ATLAS = {
   spruce: [0.006, 0.994, 0.5, 1.0],
   pine: [0.0, 0.25, 0.0, 0.5],
   leaves: [0.25, 0.5, 0.0, 0.5],
@@ -29,7 +29,7 @@ const WHITE_UV: [number, number] = [0.977, 0.047];
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const tmpC = new THREE.Color();
 
-export function foliageMaterial(): THREE.MeshStandardMaterial {
+function foliageMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({
     map: tex('foliage'),
     vertexColors: true,
@@ -257,9 +257,9 @@ function core(c: THREE.Vector3, r: THREE.Vector3, col: number, detail = 0): THRE
 // ---------------------------------------------------------------------------
 // świerk (bliski / średni) – arkusz 09: stożek, gęste opadające gałęzie, jasne końcówki
 // ---------------------------------------------------------------------------
-export type SpruceLod = 'near' | 'mid';
+type SpruceLod = 'near' | 'mid';
 
-export function spruceCardGeometry(seed: number, lod: SpruceLod): THREE.BufferGeometry {
+function spruceCardGeometry(seed: number, lod: SpruceLod): THREE.BufferGeometry {
   const rng = new Rng(seed);
   const H = 13;
   const Rmax = 3.3;

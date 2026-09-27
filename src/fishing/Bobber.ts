@@ -11,7 +11,7 @@ import { events } from '../core/Events';
 import type { FloatSignal } from './bitePatterns';
 import { stepProjectile } from './cast';
 
-export type BobberMode = 'hand' | 'flight' | 'water' | 'land' | 'held';
+type BobberMode = 'hand' | 'flight' | 'water' | 'land' | 'held';
 
 export interface BobberEnv {
   waterY(x: number, z: number): number;
@@ -43,8 +43,6 @@ export class Bobber {
   dragged = false;
   /** droga przebyta w locie (żyłka schodzi ze szpuli) */
   flightPath = 0;
-  /** czas od upadku */
-  timeInWater = 0;
   lastSurfaceY = 0;
   private rippleCooldown = 0;
   /** antenka całkiem pod wodą */
@@ -111,7 +109,6 @@ export class Bobber {
     this.shotOnBottom = false;
     const t = this.rng.range(CFG.rig.settleMin, CFG.rig.settleMax);
     this.shotSinkSpeed = CFG.rig.grunt / t;
-    this.timeInWater = 0;
     this.tilt = 1;
   }
 
@@ -187,7 +184,6 @@ export class Bobber {
     }
 
     // ---------- woda ----------
-    this.timeInWater += dt;
     const x = this.pos.x;
     const z = this.pos.z;
     const wy = env.waterY(x, z);

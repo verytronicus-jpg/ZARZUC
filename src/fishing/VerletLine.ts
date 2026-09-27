@@ -152,10 +152,6 @@ export class VerletLine {
       out[i * 3 + 2] += sz * ws + ez * we;
     }
   }
-
-  point(i: number, out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.pos[i * 3], this.pos[i * 3 + 1], this.pos[i * 3 + 2]);
-  }
 }
 
 /**

@@ -1,4 +1,4 @@
-export interface StateHandlers<S extends string> {
+interface StateHandlers<S extends string> {
   enter?: (prev: S | null) => void;
   exit?: (next: S) => void;
   update?: (dt: number, time: number) => void;
@@ -10,12 +10,10 @@ export interface StateHandlers<S extends string> {
 /** Prosta maszyna stanów z czasem w stanie i timeoutami. */
 export class StateMachine<S extends string> {
   state: S;
-  prev: S | null = null;
   /** czas w bieżącym stanie [s] */
   time = 0;
   private timeoutAt = Infinity;
   private handlers: Partial<Record<S, StateHandlers<S>>>;
-  private listeners: Array<(next: S, prev: S) => void> = [];
   private started = false;
 
   constructor(initial: S, handlers: Partial<Record<S, StateHandlers<S>>> = {}) {
@@ -25,10 +23,6 @@ export class StateMachine<S extends string> {
 
   setHandlers(handlers: Partial<Record<S, StateHandlers<S>>>): void {
     this.handlers = handlers;
-  }
-
-  onChange(fn: (next: S, prev: S) => void): void {
-    this.listeners.push(fn);
   }
 
   start(): void {
@@ -44,10 +38,8 @@ export class StateMachine<S extends string> {
   go(next: S): void {
     const prev = this.state;
     this.handlers[prev]?.exit?.(next);
-    this.prev = prev;
     this.state = next;
     this.enterState(prev);
-    for (const l of this.listeners) l(next, prev);
   }
 
   private enterState(prev: S | null): void {
@@ -61,10 +53,6 @@ export class StateMachine<S extends string> {
   /** Wydłuża/ustawia timeout bieżącego stanu (liczony od wejścia). */
   setTimeout(seconds: number): void {
     this.timeoutAt = seconds;
-  }
-
-  get timeLeft(): number {
-    return this.timeoutAt - this.time;
   }
 
   update(dt: number): void {

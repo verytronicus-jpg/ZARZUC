@@ -75,7 +75,7 @@ function sample(arr: number[], u: number): number {
   return lerp(arr[i], arr[j], f - i) / 100;
 }
 
-export function fishMaterial(species: SpeciesId): THREE.MeshStandardMaterial {
+function fishMaterial(species: SpeciesId): THREE.MeshStandardMaterial {
   const look = LOOKS[species];
   const m = new THREE.MeshStandardMaterial({
     map: tex(`fish_${species}` as TexName),
@@ -257,5 +257,3 @@ export class FishFactory implements AssetFactory {
     return g;
   }
 }
-
-export type { SpeciesId };

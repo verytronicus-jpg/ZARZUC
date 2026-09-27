@@ -8,7 +8,7 @@ import { PlanarReflection } from './PlanarReflection';
 import { FX_LAYER, PIP_LAYER, REFLECT_LAYER, SHADOW_LAYER, WATER_LAYER } from './layers';
 import type { Water } from '../world/Water';
 
-export type Quality = 'high' | 'low';
+type Quality = 'high' | 'low';
 
 /**
  * Renderer, scena, światła poranka (słońce z kaskadowymi miękkimi cieniami + wypełnienie + niebo + mapa otoczenia
@@ -196,9 +196,6 @@ export class RenderContext {
     this.skyHorizon.set(CFG.sky.horizon);
     this.post.applyConfig();
   }
-
-  /** Kaskady cieni liczone względem kamery – nic nie trzeba przesuwać (zostaje dla zgodności). */
-  followShadow(_target: THREE.Vector3): void {}
 
   /** Jakość grafiki z ekranu startowego / opcji. */
   setQuality(q: Quality): void {

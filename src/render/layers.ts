@@ -27,9 +27,3 @@ export function pipVisible(o: Object3D): Object3D {
   o.traverse((c) => c.layers.enable(PIP_LAYER));
   return o;
 }
-
-/** Przenosi obiekt (i dzieci) wyłącznie na daną warstwę. */
-export function onlyLayer(o: Object3D, layer: number): Object3D {
-  o.traverse((c) => c.layers.set(layer));
-  return o;
-}

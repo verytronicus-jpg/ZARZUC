@@ -1,17 +1,21 @@
-import GUI from 'lil-gui';
+import type GUI from 'lil-gui';
 import { CFG } from '../config';
 
 type Obj = Record<string, unknown>;
 
-/** Panel lil-gui z KAŻDYM parametrem z config.ts (edycja na żywo). */
+/**
+ * Panel lil-gui z KAŻDYM parametrem z config.ts (edycja na żywo). Biblioteka ładuje się dopiero przy pierwszym
+ * otwarciu (F1) – nie obciąża startu gry.
+ */
 export class DebugPanel {
   gui: GUI | null = null;
   visible = false;
+  private loading = false;
 
   constructor(private onChange: (path: string) => void) {}
 
-  private build(): GUI {
-    const gui = new GUI({ title: 'Zarzuć – config.ts' });
+  private build(GUIClass: typeof GUI): GUI {
+    const gui = new GUIClass({ title: 'Zarzuć – config.ts' });
     gui.domElement.style.zIndex = '20';
     const add = (folder: GUI, obj: Obj, path: string) => {
       for (const [k, v] of Object.entries(obj)) {
@@ -54,7 +58,13 @@ export class DebugPanel {
 
   toggle(v = !this.visible): void {
     this.visible = v;
-    if (v && !this.gui) this.gui = this.build();
+    if (v && !this.gui && !this.loading) {
+      this.loading = true;
+      void import('lil-gui').then(({ default: GUIClass }) => {
+        this.gui = this.build(GUIClass);
+        this.gui.domElement.style.display = this.visible ? '' : 'none';
+      });
+    }
     if (this.gui) this.gui.domElement.style.display = v ? '' : 'none';
   }
 }

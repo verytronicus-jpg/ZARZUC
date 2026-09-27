@@ -25,7 +25,7 @@ import { rollFish, spotAttraction, sampleLength, weightGrams, type FishInstance,
 import { launchVelocity, simulateRange } from './cast';
 import { onPier } from '../world/terrainMath';
 
-export type FState =
+type FState =
   | 'IDLE'
   | 'AIMING'
   | 'CHARGING'
@@ -42,7 +42,7 @@ export type FState =
   | 'LINE_SNAPPED'
   | 'FISH_ESCAPED';
 
-export interface Gear {
+interface Gear {
   rodInHand: boolean;
   hasWorms: boolean;
   baitOn: boolean;
@@ -100,7 +100,6 @@ export class FishingController {
   private swingDir = 0;
   private launched = false;
   private strikeCooldown = 0;
-  private lateralSign = 1;
   private landingFrom = new THREE.Vector3();
   private attraction = 1;
   private splashCooldown = 0;
@@ -196,17 +195,9 @@ export class FishingController {
     return this.lastT / this.strengthN;
   }
 
-  get state(): FState {
-    return this.fsm.state;
-  }
-
   /** zestaw w wodzie (nie w ręce) */
   get rigOut(): boolean {
     return !this.fsm.is('IDLE', 'AIMING', 'CHARGING', 'CAUGHT', 'LINE_SNAPPED') && !(this.fsm.is('CASTING') && !this.launched);
-  }
-
-  get busy(): boolean {
-    return !this.fsm.is('IDLE', 'AIMING');
   }
 
   attachRod(rodObj: THREE.Object3D): void {
@@ -332,10 +323,8 @@ export class FishingController {
       BITE: {
         timeout: () => this.pattern?.window ?? 1,
         enter: () => {
-          this.lateralSign = this.rng.sign();
           this.input.clearMotionHistory();
           events.emit('bite', {});
-          this.msg('Bierze! Zatnij [PPM]', 'good', Math.max(0.6, this.pattern?.window ?? 1));
         },
         onTimeout: () => {
           this.gear.baitOn = false;

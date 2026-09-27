@@ -47,10 +47,6 @@ export class Player {
     return Math.hypot(this.vel.x, this.vel.z);
   }
 
-  get forward(): THREE.Vector3 {
-    return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-  }
-
   onPier(): boolean {
     return onPier(this.pos.x, this.pos.z);
   }

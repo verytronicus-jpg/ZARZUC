@@ -27,7 +27,6 @@ export class GameAudio {
     events.on('fishSplash', (e) => this.splash(e.strength * 1.2, true));
     events.on('lineSnap', () => this.snap());
     events.on('baitOn', () => this.squish());
-    events.on('pickup', () => this.blip(520, 0.05, 0.12));
     events.on('uiClick', () => this.blip(760, 0.04, 0.1));
     events.on('caught', () => {
       this.blip(660, 0.12, 0.25);
@@ -317,28 +316,6 @@ export class GameAudio {
     lfo.start(t);
     o.stop(t + dur + 0.05);
     lfo.stop(t + dur + 0.05);
-  }
-
-  thump(vol: number, freq: number): void {
-    const c = this.ctx;
-    if (!c) return;
-    const t = c.currentTime;
-    const o = c.createOscillator();
-    o.frequency.setValueAtTime(freq * 1.6, t);
-    o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.2);
-    const g = c.createGain();
-    this.env(g, t, vol * 0.5, 0.004, 0.25);
-    o.connect(g).connect(this.sfx);
-    o.start(t);
-    o.stop(t + 0.35);
-    const s = this.src();
-    const lp = c.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 600;
-    const g2 = c.createGain();
-    this.env(g2, t, vol * 0.3, 0.002, 0.12);
-    s.connect(lp).connect(g2).connect(this.sfx);
-    s.start(t, 0.3, 0.2);
   }
 
   whoosh(dur: number, vol: number): void {

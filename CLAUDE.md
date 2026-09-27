@@ -23,7 +23,8 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # Vitest – musi przechodzić po każdej zmianie
 npm run build      # tsc --noEmit + vite build → dist/ (ścieżki względne, hosting statyczny)
-npm run typecheck
+npm run typecheck  # strict + noUnusedLocals/noUnusedParameters – martwy kod blokuje build
+npm run check      # typecheck + testy
 python3 scripts/prepare_images.py [panorama|textures|foliage|fish|og]   # obrazy z reference/ → public/
 ```
 
@@ -45,9 +46,14 @@ src/world/
   Heightmap.ts              niejednorodna siatka próbek (gęsto w obszarze gry); heightAt po tych samych trójkątach
   waves.ts                  ★ fale Gerstnera – JEDNA definicja dla CPU i GPU
   Water.ts                  shader wody: refrakcja z głębią, pochłanianie, odbicie planarne/panorama, piana, iskrzenie
-  World.ts                  teren (splatting), woda, pomost, łódka, chatka (+wnętrze, lampa, dym), płotek, las
-                            (bliskie/średnie/dalekie drzewa), trzciny, pałki, grążele, kamienie, podszyt, trawa;
-                            instancje + proxy cieni; zapytania: groundAt, depthAt, reedDistance, structureDistance…
+  World.ts                  składa świat: teren, woda, pomost, łódka, chatka (+wnętrze, lampa, dym), płotek,
+                            zwalone drzewo, roślinność, trawa; zapytania: groundAt, depthAt, reedDistance,
+                            structureDistance, cameraBlocked…
+  TerrainMesh.ts            siatka terenu z heightmapy: kolory wierzchołków + wagi splattingu tekstur
+  Vegetation.ts             rozmieszczenie (z ziarna): trzciny, pałki, grążele, kamienie, las (bliskie/średnie/
+                            dalekie drzewa), podszyt; dopisuje kolizje i punkty trzcin. Kolejność losowań = wygląd
+  VegetationInstancer.ts    InstancedMesh z modeli rejestru, materiał roślin (wiatr, alfa w mipmapach), proxy
+                            cieni i LOD bliskich świerków wokół gracza
   GrassField.ts             trawa na wietrze wokół gracza (jeden InstancedMesh, podmuchy, uginanie, zanik)
   ChimneySmoke.ts, wind.ts  dym z komina, wspólne uniformy wiatru
 src/render/
@@ -78,7 +84,7 @@ src/assets/
 src/player/
   Player.ts                 kontroler: przyspieszenie, obrót, grawitacja, teren/ganek/pomost, kolizje, granice
   CharacterAnimator.ts      chód/bieg + pozy górne (UpperPose) i dolne (kucanie, rozkrok, wykrok)
-  collision.ts, Interaction.ts
+  collision.ts              kolizje gracza: CollisionGrid (siatka przestrzenna) + resolveCollisions (bez alokacji)
   Preparation.ts            cele (zejdź nad jezioro → nabij robaka → zarzuć), ekwipunek startowy, nabijanie (F)
 src/fishing/                ★ serce gry – NIE ZMIENIAĆ ZACHOWANIA bez wyraźnej potrzeby
   FishingController.ts      FSM łowienia, celowanie, rzut, zestaw w wodzie, brania, zacięcie, hol, wyciągnięcie,
@@ -143,10 +149,10 @@ trzcinach, okoń przy strukturach, leszcz i karp głęboko (> 2,5 m). `tests/wor
   i liniowej głębi (refrakcja) → woda i efekty (warstwy WATER/FX) → `PostFX.finish`. Mgła jest w PostFX
   (`scene.fog = null`), więc nowe materiały nie potrzebują obsługi mgły.
 - Cienie: `SunLight` (2 kaskady) + proxy roślinności na warstwie SHADOW odświeżane wokół gracza.
-- Roślinność: `InstancedMesh` przez `World.instanced(kind, list, opts)` (sway, odbicie, detal, lżejszy model do
-  cieni `shadowKind`); karty liści mają `alphaTest` i podbitą alfę w mipmapach (`vegMaterial`). Bliskie świerki
-  mają LOD (`lodPair`: pełny model w promieniu `CFG.quality.*.treeLodRadius`, dalej średni) – podział razem
-  z proxy cieni w `updateShadowProxies`.
+- Roślinność: `InstancedMesh` przez `VegetationInstancer.add(kind, list, opts)` (sway, odbicie, detal, lżejszy
+  model do cieni `shadowKind`); karty liści mają `alphaTest` i podbitą alfę w mipmapach (`vegMaterial`). Bliskie
+  świerki mają LOD (`lodPair`: pełny model w promieniu `CFG.quality.*.treeLodRadius`, dalej średni) – podział
+  razem z proxy cieni w `VegetationInstancer.update` (co `CFG.render.shadowProxyStep` m ruchu gracza).
 - Podgląd spławika (`renderViewport`) rysuje tylko warstwę PIP (spławik, żyłka, niebo) + wodę – nie całą scenę.
 - Żyłka: `VerletLine` (fizyka wizualna w kroku, luz ograniczony do zwisu, bez ryby leży na tafli) +
   `LineRenderer` (wstęga o stałej szerokości w px, Catmull-Rom); w renderze `renderInto` interpoluje i dociąga
@@ -209,4 +215,4 @@ Każdy model powstaje przez `AssetRegistry.create(kind)`. Podmiana na GLB: wpis 
 - Tint `CFG.post.shadowTint/highlightTint` jest liniowy (`setHex(…, LinearSRGBColorSpace)`).
 - `mergeStaticChildren` scala siatki o tym samym materiale – nie zakładaj, że dzieci modelu to pojedyncze bryły.
 - Pointer lock może być zablokowany (np. w osadzonej ramce) – `Input.lockFailed` przełącza na wolny kursor.
-- `Heightmap.heightAt` musi dzielić komórki na trójkąty tak samo jak siatka terenu w `World.buildTerrain`.
+- `Heightmap.heightAt` musi dzielić komórki na trójkąty tak samo jak siatka terenu w `buildTerrainMesh` (`TerrainMesh.ts`).

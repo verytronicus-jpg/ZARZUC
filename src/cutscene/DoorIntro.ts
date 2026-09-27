@@ -9,7 +9,7 @@ import type { Player } from '../player/Player';
 import { Timeline, type Caption, type TimelineEvent, type TimelineHost } from './Timeline';
 import { buildDoorIntro } from './doorIntroScript';
 
-export interface IntroHost {
+interface IntroHost {
   setFade(a: number): void;
   setCaption(c: Caption | null, alpha: number): void;
   /** mnożniki światła otoczenia i ekspozycji (ciemne wnętrze → oślepienie → norma) */
@@ -35,7 +35,6 @@ export class DoorIntro implements TimelineHost {
   private handTarget = new THREE.Vector3();
   private handPos = new THREE.Vector3();
   private handRest = new THREE.Vector3();
-  private doorAngle = 0;
   private bob = 0;
   private stepsDone = 0;
   ended = false;
@@ -124,7 +123,6 @@ export class DoorIntro implements TimelineHost {
 
   // ---------------------------------------------------------------- aktorzy
   private setDoor(open01: number): void {
-    this.doorAngle = open01;
     this.door.rotation.y = -CFG.intro.doorAngleDeg * DEG * open01;
     this.gaps.visible = open01 < 0.02;
   }

@@ -28,7 +28,7 @@ import { mountStartScreen, type StartScreenHandle, type StartScreenFish } from '
 import '../ui/startscreen/startscreen.css';
 import { fmtWeight } from './math';
 
-export type GState = 'BOOT' | 'START_SCREEN' | 'INTRO' | 'GAMEPLAY' | 'PAUSE';
+type GState = 'BOOT' | 'START_SCREEN' | 'INTRO' | 'GAMEPLAY' | 'PAUSE';
 
 /** Globalna maszyna stanów gry i spinanie systemów. */
 export class Game {
@@ -58,7 +58,6 @@ export class Game {
   private debugOverlay = false;
   private catchOpen = false;
   private hudOn = false;
-  private lastCatchRecord = false;
   private tmp = new THREE.Vector3();
   private tmp2 = new THREE.Vector3();
   /** kamera podglądu spławika (obraz w obrazie) */
@@ -316,7 +315,6 @@ export class Game {
   private onCatch(f: CaughtFish): void {
     const sp = this.fishing.fishSpecies!;
     const record = this.log.add({ species: f.species, lengthCm: f.lengthCm, weightG: f.weightG, date: new Date().toISOString(), fightTime: f.fightTime });
-    this.lastCatchRecord = record;
     this.catchOpen = true;
     this.input.exitLock();
     this.ui.showCatch({ id: sp.id, species: sp.name, lengthCm: f.lengthCm, weightG: f.weightG, record, fightTime: f.fightTime });
@@ -453,8 +451,7 @@ export class Game {
 
     this.effects.update(scaledDt, rt);
     const shadowAt = this.shadowTarget();
-    this.ctx.followShadow(shadowAt);
-    this.world.updateShadowProxies(shadowAt);
+    this.world.updateVegetation(shadowAt);
     this.world.updateGrass(this.fsm.is('INTRO', 'GAMEPLAY', 'PAUSE') ? this.player.root.position : this.ctx.camera.position, this.world.grassDirty);
     this.world.grassDirty = false;
     this.world.updateEffects(frameDt);
@@ -520,24 +517,6 @@ export class Game {
     else if (f.fsm.is('FIGHT') && f.canLand) ui.setBiteAlert('Wyciągnij rybę – [E]', 'land');
     else ui.setBiteAlert(null);
 
-    // podpowiedź nad obiektem
-    const it = prep.interaction.current;
-    if (it && !this.catchOpen) {
-      const p = this.tmp.copy(prep.interaction.currentPos);
-      p.y += 0.3;
-      p.project(this.ctx.camera);
-      if (p.z < 1) {
-        const x = (p.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-p.y * 0.5 + 0.5) * window.innerHeight;
-        ui.setPrompt(`[E] ${it.label()}`, x, y);
-      } else ui.setPrompt(null);
-    } else if (f.canLand && f.fsm.is('FIGHT') && f.fish) {
-      const p = this.tmp.copy(f.fish.pos);
-      p.y += 0.5;
-      p.project(this.ctx.camera);
-      ui.setPrompt('[E] Wyciągnij', (p.x * 0.5 + 0.5) * window.innerWidth, (-p.y * 0.5 + 0.5) * window.innerHeight);
-    } else ui.setPrompt(null);
-
     // sygnalizacja stanu spławika: znacznik w widoku głównym + ramka podglądu
     const rigInWater = f.bobber.mode === 'water' && f.fsm.is('SETTLING', 'WAITING', 'NIBBLE', 'BITE', 'MISSED_EARLY', 'BAIT_STOLEN', 'FISH_ESCAPED');
     const fstate = f.fsm.is('BITE') ? (f.bobber.submerged ? 'under' : 'bite') : f.fsm.is('NIBBLE') ? 'nibble' : 'idle';
@@ -575,6 +554,7 @@ export class Game {
     const r = this.ctx.renderer.info.render;
     return [
       `FPS          ${this.loop.fps.toFixed(0)}   draw calls ${r.calls}   tris ${r.triangles}`,
+      `grafika      ${CFG.quality.current === 'high' ? 'Wysoka' : 'Niska'}   rozdzielczość ×${this.ctx.resolutionScale.toFixed(1)}   trawa ${this.world.grass.visibleCount} kęp`,
       `Gra          ${this.fsm.state}   tempo ×${this.loop.timeScale}   ${CFG.bite.fastMode ? `SZYBKIE BRANIA ×${CFG.bite.fastMultiplier}` : ''}`,
       `Łowienie     ${f.fsm.state}  (${fmt(f.fsm.time, 1)} s)`,
       `T            ${f.lastT.toFixed(1)} N   (${Math.round(f.tensionRatio * 100)} % z ${f.strengthN.toFixed(0)} N)`,

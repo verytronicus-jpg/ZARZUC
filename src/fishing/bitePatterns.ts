@@ -29,7 +29,7 @@ export interface BitePattern {
 const NONE: FloatSignal = { pullGf: 0, lateral: 0, liftShot: 0 };
 
 /** gładki impuls 0→1→0 */
-export function pulse(t: number, start: number, dur: number): number {
+function pulse(t: number, start: number, dur: number): number {
   if (t < start || t > start + dur) return 0;
   return Math.sin((Math.PI * (t - start)) / dur);
 }

@@ -3,7 +3,7 @@ import { CFG } from '../config';
 import { clamp, damp, smoothstep } from '../core/math';
 import type { World } from '../world/World';
 
-export type CamMode = 'follow' | 'fight' | 'external';
+type CamMode = 'follow' | 'fight' | 'external';
 
 /**
  * Kamera trzecioosobowa: orbita myszą (pointer lock), ramię sprężynowe z kolizją z terenem,
@@ -55,11 +55,6 @@ export class CameraRig {
 
   get blending(): boolean {
     return this.blendFrom !== null;
-  }
-
-  /** Ustawia yaw tak, by kamera patrzyła w kierunku (dx,dz). */
-  lookAlong(dx: number, dz: number): void {
-    this.yaw = Math.atan2(dx, dz);
   }
 
   update(dt: number, look: { dx: number; dy: number }, playerPos: THREE.Vector3): void {

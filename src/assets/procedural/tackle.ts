@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { CFG, type SpeciesId } from '../../config';
-import type { AssetFactory, AssetOptions } from '../AssetRegistry';
+import { CFG } from '../../config';
+import type { AssetFactory } from '../AssetRegistry';
 import { PIVOTS } from '../AssetRegistry';
 import { cylZ, group, mat, mesh } from '../materials';
 
@@ -174,7 +174,7 @@ export class FloatFactory implements AssetFactory {
 
 /** Haczyk + śrucina + robak. Origin = oczko haczyka, zwisa w dół (-Y). */
 export class HookFactory implements AssetFactory {
-  create(opts?: AssetOptions & { withWorm?: boolean }): THREE.Object3D {
+  create(): THREE.Object3D {
     const root = group('hook');
     const s = CFG.rigVisual.hookScale;
     const metal = mat(0x6f767c, 0.3, 0.9);
@@ -263,5 +263,3 @@ export class WormBoxFactory implements AssetFactory {
     return root;
   }
 }
-
-export type { SpeciesId };

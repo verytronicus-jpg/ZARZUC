@@ -28,7 +28,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string,
   return e;
 }
 
-export interface FightView {
+interface FightView {
   species: string;
   tensionRatio: number;
   dragRatio: number;
@@ -42,7 +42,6 @@ export interface FightView {
 
 /** Nakładka HTML/CSS nad canvasem. */
 export class UI {
-  readonly root: HTMLElement;
   private fade: HTMLElement;
   private caption: HTMLElement;
   private skip: HTMLElement;
@@ -56,7 +55,6 @@ export class UI {
   private lineVal: HTMLElement;
   private hint: HTMLElement;
   private messages: HTMLElement;
-  private prompt: HTMLElement;
   private crosshair: HTMLElement;
   private power: HTMLElement;
   private powerFill: HTMLElement;
@@ -81,7 +79,6 @@ export class UI {
   private lastObjKey = '';
 
   constructor(root: HTMLElement) {
-    this.root = root;
     this.loading = el('div', { id: 'loading' }, 'Ładowanie…');
 
     // --- HUD ---
@@ -98,7 +95,6 @@ export class UI {
     this.lineVal = lineItem.querySelector('b')!;
     this.hint = el('div', { id: 'hint', class: 'panel' });
     this.messages = el('div', { id: 'messages' });
-    this.prompt = el('div', { class: 'prompt hidden' });
     this.crosshair = el('div', { id: 'crosshair' });
     this.power = el(
       'div',
@@ -129,7 +125,7 @@ export class UI {
     this.clickPlay = el('div', { id: 'clickplay', class: 'panel hidden' }, 'Kliknij, aby sterować');
     this.floatCam = el('div', { id: 'floatcam', class: 'hidden' }, '<span>Spławik</span><b class="alert">BIERZE!</b>');
     this.floatMarker = el('div', { id: 'floatmarker', class: 'hidden' }, '<i></i><b>!</b>');
-    this.hud.append(this.floatMarker, this.floatCam, this.objectives, this.status, this.hint, this.messages, this.prompt, this.crosshair, this.power, this.hold, this.fight, this.clickPlay);
+    this.hud.append(this.floatMarker, this.floatCam, this.objectives, this.status, this.hint, this.messages, this.crosshair, this.power, this.hold, this.fight, this.clickPlay);
 
     // --- intro ---
     this.caption = el('div', { id: 'caption' }, '<div class="t"></div><div class="s"></div>');
@@ -189,21 +185,6 @@ export class UI {
     this.fade.style.opacity = String(a);
   }
 
-  /** Animowane przejście do/z czerni. */
-  fadeTo(target: number, seconds: number): Promise<void> {
-    const from = parseFloat(this.fade.style.opacity || '0');
-    const t0 = performance.now();
-    return new Promise((resolve) => {
-      const step = () => {
-        const t = Math.min(1, (performance.now() - t0) / (seconds * 1000));
-        this.setFade(from + (target - from) * t);
-        if (t < 1) requestAnimationFrame(step);
-        else resolve();
-      };
-      step();
-    });
-  }
-
   setCaption(c: Caption | null, alpha: number): void {
     this.caption.style.opacity = c ? String(alpha) : '0';
     if (c) {
@@ -258,18 +239,6 @@ export class UI {
     while (this.messages.children.length > 3) this.messages.firstElementChild?.remove();
     setTimeout(() => m.classList.add('out'), time * 1000);
     setTimeout(() => m.remove(), time * 1000 + 450);
-  }
-
-  setPrompt(text: string | null, x = 0, y = 0): void {
-    if (!text) {
-      this.prompt.classList.add('hidden');
-      return;
-    }
-    this.prompt.classList.remove('hidden');
-    const html = text.replace(/\[(.+?)\]/g, '<kbd>$1</kbd>');
-    if (this.prompt.innerHTML !== html) this.prompt.innerHTML = html;
-    css(this.prompt, 'left', `${x}px`);
-    css(this.prompt, 'top', `${y}px`);
   }
 
   setCrosshair(on: boolean): void {

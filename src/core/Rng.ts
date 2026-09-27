@@ -6,10 +6,6 @@ export class Rng {
     this.s = seed >>> 0;
   }
 
-  setSeed(seed: number): void {
-    this.s = seed >>> 0;
-  }
-
   /** [0, 1) */
   next(): number {
     let t = (this.s = (this.s + 0x6d2b79f5) >>> 0);
@@ -28,17 +24,6 @@ export class Rng {
 
   chance(p: number): boolean {
     return this.next() < p;
-  }
-
-  sign(): number {
-    return this.next() < 0.5 ? -1 : 1;
-  }
-
-  /** Box–Muller */
-  normal(mean = 0, sd = 1): number {
-    const u = Math.max(1e-12, this.next());
-    const v = this.next();
-    return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
 
   /** Losowanie indeksu wg wag (wagi ≥ 0). Zwraca -1 gdy suma wag = 0. */

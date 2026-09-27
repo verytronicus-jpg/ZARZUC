@@ -1,13 +1,14 @@
 {
   "name": "zarzuc",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Zarzuć – gra wędkarska 3D w przeglądarce (Three.js + TS + Vite) · zarzuc.com",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && vitest run"
   },
   "dependencies": {
     "lil-gui": "^0.21.0",

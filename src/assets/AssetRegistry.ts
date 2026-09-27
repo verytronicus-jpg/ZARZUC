@@ -122,10 +122,6 @@ export class AssetRegistry {
     this.factories.set(kind, factory);
   }
 
-  has(kind: AssetKind): boolean {
-    return this.factories.has(kind);
-  }
-
   create(kind: AssetKind, opts?: AssetOptions): THREE.Object3D {
     const f = this.factories.get(kind);
     if (!f) throw new Error(`[AssetRegistry] Brak fabryki dla "${kind}"`);

@@ -9,7 +9,6 @@ import { events } from '../core/Events';
 import type { Input } from '../core/Input';
 import { PIVOTS, pivot } from '../assets/AssetRegistry';
 import type { Player } from './Player';
-import { InteractionSystem } from './Interaction';
 import type { FishingController, MsgKind } from '../fishing/FishingController';
 import type { CameraRig } from '../render/CameraRig';
 
@@ -20,8 +19,6 @@ export interface Objective {
 }
 
 export class Preparation {
-  /** interakcje „[E] …” – na razie bez obiektów (przyda się później) */
-  readonly interaction = new InteractionSystem();
   readonly objectives: Objective[] = [
     { id: 'shore', text: 'Zejdź nad jezioro', done: false },
     { id: 'bait', text: 'Nabij robaka (przytrzymaj F)', done: false },
@@ -63,18 +60,8 @@ export class Preparation {
     if (o && !o.done) o.done = true;
   }
 
-  get currentObjective(): Objective | null {
-    return this.objectives.find((o) => !o.done) ?? null;
-  }
-
   update(dt: number, input: Input, time: number): void {
-    // interakcje (nie w trakcie łowienia)
     const f = this.fishing;
-    const camF = this.camera.forwardFlat;
-    if (!f.busy && this.baitProgress === null) this.interaction.update(this.player.pos, camF);
-    else this.interaction.current = null;
-    if (this.interaction.current && input.consumePress('KeyE')) this.interaction.interact();
-
     // nabijanie robaka: przytrzymaj F
     const canBait = f.gear.rodInHand && f.gear.hasWorms && !f.gear.baitOn && f.fsm.is('IDLE', 'AIMING');
     if (input.consumePress('KeyF')) {

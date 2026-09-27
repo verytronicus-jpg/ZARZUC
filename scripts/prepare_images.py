@@ -4,11 +4,13 @@ Przygotowanie obrazów z reference/ do gry (public/…). Uruchom z katalogu repo
     python3 scripts/prepare_images.py panorama   # tylko wybrane: panorama | fish | og | textures | foliage
 Wymaga: Pillow, numpy (pip install pillow numpy). Oryginały zostają w reference/.
 """
+import math
+import random
 import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 REF = ROOT / 'reference'
@@ -19,6 +21,27 @@ def save_jpg(img: Image.Image, path: Path, q=86):
     path.parent.mkdir(parents=True, exist_ok=True)
     img.convert('RGB').save(path, 'JPEG', quality=q, optimize=True, progressive=True)
     print(f'  {path.relative_to(ROOT)}  {img.size[0]}×{img.size[1]}  {path.stat().st_size // 1024} KB')
+
+
+def bleed(img: Image.Image) -> Image.Image:
+    """
+    Kolor „rozlany” w przezroczyste tło (alfa bez zmian): puste piksele dostają średni kolor najbliższych
+    nieprzezroczystych – bez ciemnych obwódek przy filtrowaniu i mipmapach tekstur z alfą.
+    """
+    a = np.asarray(img.convert('RGBA')).astype(np.float32) / 255
+    rgb, al = a[..., :3], a[..., 3:4]
+    premul = Image.fromarray((rgb * al * 255).astype(np.uint8))
+    cover = Image.fromarray((al[..., 0] * 255).astype(np.uint8))
+    out = rgb.copy()
+    filled = al[..., 0] >= 0.5
+    for r in (2, 4, 8, 16, 32, 64):
+        c = np.asarray(premul.filter(ImageFilter.BoxBlur(r))).astype(np.float32) / 255
+        w = np.asarray(cover.filter(ImageFilter.BoxBlur(r))).astype(np.float32)[..., None] / 255
+        take = ~filled & (w[..., 0] > 1e-3)
+        out[take] = (c / np.maximum(w, 1e-4))[take]
+        filled |= take
+    res = np.concatenate([np.clip(out, 0, 1), al], -1)
+    return Image.fromarray((res * 255).astype(np.uint8), 'RGBA')
 
 
 # ---------------------------------------------------------------------------
@@ -361,23 +384,22 @@ def og():
     save_jpg(crop, PUB / 'og-image.jpg', q=84)
 
 
-
 # ---------------------------------------------------------------------------
 # atlas liści i igliwia (karty drzew i roślin): gałąź świerka, pęk sosny, liście, pędy wierzby, paproć
 # ---------------------------------------------------------------------------
-import math
-import random
-from PIL import ImageDraw
+ATLAS_SS = 2  # nadpróbkowanie rysunku (wygładzone krawędzie)
+ATLAS_W, ATLAS_H = 1024, 512
+ATLAS_WHITE_PX = 48
 
-S = 2  # nadpróbkowanie
-W, H = 1024, 512
 
 def hexc(h):
     return tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
 
+
 def lerpc(a, b, t):
     t = max(0.0, min(1.0, t))
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
 
 def grad(stops, t):
     for i in range(len(stops) - 1):
@@ -386,9 +408,11 @@ def grad(stops, t):
             return lerpc(c0, c1, (t - t0) / max(1e-6, t1 - t0))
     return stops[-1][1]
 
+
 def jitterc(c, rnd, amt=18):
     d = rnd.uniform(-amt, amt)
     return tuple(max(0, min(255, int(v + d + rnd.uniform(-6, 6)))) for v in c)
+
 
 def spruce(draw, x0, y0, w, h, rnd):
     """Gałąź świerka z góry: od pnia (lewo) do końca (prawo) – gęsta, pierzasta, z odgałęzieniami."""
@@ -432,16 +456,17 @@ def spruce(draw, x0, y0, w, h, rnd):
     for i in range(60):
         t = i / 60
         ax, ay = axis(t); bx, by = axis(t + 1 / 60)
-        draw.line([(ax, ay), (bx, by)], fill=twig + (255,), width=max(3, int(9 * S * (1 - t * 0.7))))
+        draw.line([(ax, ay), (bx, by)], fill=twig + (255,), width=max(3, int(9 * ATLAS_SS * (1 - t * 0.7))))
     for (ax, ay, ex, ey, t, lv) in segs:
-        draw.line([(ax, ay), (ex, ey)], fill=twig + (255,), width=max(2, int((5 if lv == 1 else 3) * S * (1 - t * 0.5))))
+        draw.line([(ax, ay), (ex, ey)], fill=twig + (255,), width=max(2, int((5 if lv == 1 else 3) * ATLAS_SS * (1 - t * 0.5))))
     # najpierw ciemniejsze, dłuższe igły przy osi, potem gałązki (jaśniejsze końce na wierzchu)
     for i in range(0, 60):
         t = i / 60
         ax, ay = axis(t); bx, by = axis(t + 1 / 60)
-        needle_line(ax, ay, bx, by, t * 0.6, 2.6 * S, 22 * S * (1 - t * 0.4), max(2, int(2.0 * S)))
+        needle_line(ax, ay, bx, by, t * 0.6, 2.6 * ATLAS_SS, 22 * ATLAS_SS * (1 - t * 0.4), max(2, int(2.0 * ATLAS_SS)))
     for (ax, ay, ex, ey, t, lv) in sorted(segs, key=lambda q: q[5]):
-        needle_line(ax, ay, ex, ey, t, 2.4 * S, (15 if lv == 1 else 12) * S, max(2, int(1.8 * S)))
+        needle_line(ax, ay, ex, ey, t, 2.4 * ATLAS_SS, (15 if lv == 1 else 12) * ATLAS_SS, max(2, int(1.8 * ATLAS_SS)))
+
 
 def pine_tuft(draw, cx, cy, r, rnd):
     stops = [(0.0, hexc('#1f3a1a')), (0.6, hexc('#3a5e26')), (1.0, hexc('#8ea040'))]
@@ -454,7 +479,8 @@ def pine_tuft(draw, cx, cy, r, rnd):
             a = rnd.uniform(0, 6.28)
             ln = r * rnd.uniform(0.35, 0.62)
             c = grad(stops, rnd.uniform(0.2, 1.0))
-            draw.line([(px, py), (px + math.cos(a) * ln, py + math.sin(a) * ln)], fill=jitterc(c, rnd) + (255,), width=int(1.6 * S))
+            draw.line([(px, py), (px + math.cos(a) * ln, py + math.sin(a) * ln)], fill=jitterc(c, rnd) + (255,), width=int(1.6 * ATLAS_SS))
+
 
 def leaf(draw, x, y, ang, L, Wd, col):
     pts = []
@@ -469,18 +495,20 @@ def leaf(draw, x, y, ang, L, Wd, col):
     ca, sa = math.cos(ang), math.sin(ang)
     draw.polygon([(x + px * ca - py * sa, y + px * sa + py * ca) for px, py in pts], fill=col + (255,))
 
+
 def leaf_cluster(draw, cx, cy, r, rnd, stops, count=140, size=(16, 26)):
     twig = hexc('#4a3a2c')
     for k in range(7):
         a = rnd.uniform(0, 6.28)
-        draw.line([(cx, cy), (cx + math.cos(a) * r * 0.8, cy + math.sin(a) * r * 0.8)], fill=twig + (255,), width=int(2 * S))
+        draw.line([(cx, cy), (cx + math.cos(a) * r * 0.8, cy + math.sin(a) * r * 0.8)], fill=twig + (255,), width=int(2 * ATLAS_SS))
     for j in range(count):
         a = rnd.uniform(0, 6.28)
         d = r * math.sqrt(rnd.uniform(0.02, 1.0)) * 0.82
         x, y = cx + math.cos(a) * d, cy + math.sin(a) * d
-        L = rnd.uniform(*size) * S
+        L = rnd.uniform(*size) * ATLAS_SS
         c = grad(stops, rnd.uniform(0, 1) * 0.6 + (d / r) * 0.4)
         leaf(draw, x, y, rnd.uniform(0, 6.28), L, L * 0.33, jitterc(c, rnd, 14))
+
 
 def willow(draw, x0, y0, w, h, rnd):
     stem = hexc('#5a5a2a')
@@ -493,18 +521,19 @@ def willow(draw, x0, y0, w, h, rnd):
             t = i / n
             px = x + math.sin(t * 3 + s) * w * 0.03
             py = y0 + t * h * rnd.uniform(0.93, 0.99)
-            draw.line([prev, (px, py)], fill=stem + (255,), width=int(1.4 * S))
+            draw.line([prev, (px, py)], fill=stem + (255,), width=int(1.4 * ATLAS_SS))
             prev = (px, py)
             for sgn in (-1, 1):
                 ang = math.pi / 2 + sgn * rnd.uniform(0.25, 0.6)
-                L = rnd.uniform(16, 26) * S * (1 - 0.3 * t)
+                L = rnd.uniform(16, 26) * ATLAS_SS * (1 - 0.3 * t)
                 leaf(draw, px, py, ang, L, L * 0.16, jitterc(grad(stops, rnd.uniform(0, 1)), rnd, 12))
+
 
 def fern(draw, x0, y0, w, h, rnd):
     stops = [(0.0, hexc('#2c5220')), (0.7, hexc('#5a852e')), (1.0, hexc('#9fb548'))]
     cx = x0 + w / 2
     n = 17
-    draw.line([(cx, y0 + h), (cx, y0 + 4)], fill=hexc('#4a5a22') + (255,), width=int(2.4 * S))
+    draw.line([(cx, y0 + h), (cx, y0 + 4)], fill=hexc('#4a5a22') + (255,), width=int(2.4 * ATLAS_SS))
     for i in range(n):
         t = i / n
         py = y0 + h - t * h * 0.97
@@ -524,44 +553,27 @@ def fern(draw, x0, y0, w, h, rnd):
                 leaf(draw, qx, qy, math.atan2(ey - pyy, ex - px) - 1.1, lw * 2.2, lw * 0.5, c2)
                 leaf(draw, qx, qy, math.atan2(ey - pyy, ex - px) + 1.1, lw * 2.2, lw * 0.5, c2)
 
-def bleed(img):
-    """Kolor wpuszczony w przezroczyste tło (bez ciemnych obwódek przy mipmapach)."""
-    a = np.asarray(img).astype(np.float32) / 255
-    rgb, al = a[..., :3], a[..., 3:4]
-    acc = rgb * al; w = al.copy()
-    out = rgb.copy()
-    cur_acc, cur_w = acc, w
-    for r in (2, 4, 8, 16, 32, 64):
-        ba = np.asarray(Image.fromarray((cur_acc * 255).astype(np.uint8)).filter(ImageFilter.BoxBlur(r))).astype(np.float32) / 255
-        bw = np.asarray(Image.fromarray((cur_w[..., 0] * 255).astype(np.uint8)).filter(ImageFilter.BoxBlur(r))).astype(np.float32)[..., None] / 255
-        fill = ba / np.maximum(bw, 1e-4)
-        mask = (w < 0.5) & (bw > 1e-3)
-        out = np.where(mask & (out.sum(-1, keepdims=True) == rgb.sum(-1, keepdims=True)), fill, out) if False else np.where((al < 0.5) & (bw > 1e-3), fill, out)
-        # kolejne promienie tylko tam, gdzie jeszcze pusto
-        al = np.maximum(al, (bw > 1e-3).astype(np.float32) * 0.49)
-    res = np.concatenate([np.clip(out, 0, 1), a[..., 3:4]], -1)
-    return Image.fromarray((res * 255).astype(np.uint8), 'RGBA')
 
 def foliage_atlas(path):
     rnd = random.Random(7)
-    img = Image.new('RGBA', (W * S, H * S), (0, 0, 0, 0))
+    img = Image.new('RGBA', (ATLAS_W * ATLAS_SS, ATLAS_H * ATLAS_SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     # górna połowa: gałąź świerka (1024×256)
-    spruce(d, 6 * S, 0, (W - 12) * S, (H // 2) * S, rnd)
+    spruce(d, 6 * ATLAS_SS, 0, (ATLAS_W - 12) * ATLAS_SS, (ATLAS_H // 2) * ATLAS_SS, rnd)
     # dolna połowa: sosna | liście (brzoza/krzak) | wierzba | paproć – po 256×256
-    q = (H // 2) * S
-    pine_tuft(d, 128 * S, q + 128 * S, 118 * S, rnd)
-    leaf_cluster(d, 384 * S, q + 128 * S, 118 * S, rnd, [(0.0, hexc('#3f5e1e')), (0.6, hexc('#7b9a30')), (1.0, hexc('#c4cf58'))], count=260, size=(18, 28))
-    willow(d, 512 * S, q + 2 * S, 256 * S, 252 * S, rnd)
-    fern(d, 768 * S, q + 2 * S, 256 * S, 252 * S, rnd)
-    # białe, nieprzezroczyste pole na pnie (UV wskazuje tu, kolor z wierzchołków)
-    d.rectangle([W * S - 10 * S, H * S - 10 * S, W * S, H * S], fill=(255, 255, 255, 255))
-    img = img.resize((W, H), Image.LANCZOS)
+    q = (ATLAS_H // 2) * ATLAS_SS
+    pine_tuft(d, 128 * ATLAS_SS, q + 128 * ATLAS_SS, 118 * ATLAS_SS, rnd)
+    leaf_cluster(d, 384 * ATLAS_SS, q + 128 * ATLAS_SS, 118 * ATLAS_SS, rnd, [(0.0, hexc('#3f5e1e')), (0.6, hexc('#7b9a30')), (1.0, hexc('#c4cf58'))], count=260, size=(18, 28))
+    willow(d, 512 * ATLAS_SS, q + 2 * ATLAS_SS, 256 * ATLAS_SS, 252 * ATLAS_SS, rnd)
+    fern(d, 768 * ATLAS_SS, q + 2 * ATLAS_SS, 256 * ATLAS_SS, 252 * ATLAS_SS, rnd)
+    # białe, nieprzezroczyste pole 48×48 px w prawym dolnym rogu – pnie i rdzenie koron (WHITE_UV w foliage.ts)
+    pad = ATLAS_WHITE_PX * ATLAS_SS
+    d.rectangle([ATLAS_W * ATLAS_SS - pad, ATLAS_H * ATLAS_SS - pad, ATLAS_W * ATLAS_SS, ATLAS_H * ATLAS_SS], fill=(255, 255, 255, 255))
+    img = img.resize((ATLAS_W, ATLAS_H), Image.LANCZOS)
     img = bleed(img)
     img.save(path, 'WEBP', quality=90, method=6)
     print(f'  {path.relative_to(ROOT)}  {img.size[0]}×{img.size[1]}  {path.stat().st_size // 1024} KB')
     return img
-
 
 
 def foliage():

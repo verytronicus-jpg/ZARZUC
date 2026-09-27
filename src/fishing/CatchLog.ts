@@ -1,7 +1,7 @@
 /** Dziennik połowów i rekordy (localStorage w try/catch – gra działa także bez niego). */
 import type { SpeciesId } from '../config';
 
-export interface LogEntry {
+interface LogEntry {
   species: SpeciesId;
   lengthCm: number;
   weightG: number;

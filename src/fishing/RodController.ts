@@ -25,8 +25,6 @@ export class RodController {
   pitch = 0.6;
   private curYaw = 0;
   private curPitch = 0.6;
-  /** true → natychmiastowe ustawienie (bez wygładzania) */
-  snap = true;
   bend = 0;
   private bendVel = 0;
   /** dodatkowe ugięcie (np. ładowanie przy zamachu, ujemne = do tyłu) */

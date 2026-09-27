@@ -16,7 +16,7 @@ export class PovHandFactory implements AssetFactory {
     const fore = new THREE.CylinderGeometry(0.034, 0.047, 0.42, 12, 4, false);
     fore.rotateX(Math.PI / 2);
     fore.translate(0, 0, 0.21);
-    parts.push(paint(flat(fore), (p, n, out) => out.copy(skin).lerp(skinDark, 0.35 * Math.max(0, -n.y) + 0.15 * Math.max(0, n.x))));
+    parts.push(paint(flat(fore), (_p, n, out) => out.copy(skin).lerp(skinDark, 0.35 * Math.max(0, -n.y) + 0.15 * Math.max(0, n.x))));
     // rąbek rękawa (kremowy T-shirt) przy łokciu
     const cuff = new THREE.CylinderGeometry(0.056, 0.058, 0.07, 12);
     cuff.rotateX(Math.PI / 2);

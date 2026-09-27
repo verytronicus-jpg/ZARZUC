@@ -2,10 +2,10 @@
 import { clamp, lerp } from '../core/math';
 import type { Rng } from '../core/Rng';
 
-export type StrikePhase = 'waiting' | 'nibble' | 'bite' | 'late';
-export type StrikeResult = 'empty' | 'spooked' | 'aborted' | 'hooked' | 'missed' | 'stolen';
+type StrikePhase = 'waiting' | 'nibble' | 'bite' | 'late';
+type StrikeResult = 'empty' | 'spooked' | 'aborted' | 'hooked' | 'missed' | 'stolen';
 
-export interface StrikeConfig {
+interface StrikeConfig {
   earlyStrikeSpookChance: number;
   hookChanceStart: number;
   hookChanceEnd: number;
@@ -37,7 +37,7 @@ export function evaluateStrike(
   }
 }
 
-export interface BiteRateConfig {
+interface BiteRateConfig {
   meanWait: number;
   minWait: number;
   maxWait: number;

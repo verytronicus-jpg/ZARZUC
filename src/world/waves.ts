@@ -8,7 +8,7 @@ import { DEG } from '../core/math';
 
 export const MAX_WAVES = 4;
 
-export interface WaveParam {
+interface WaveParam {
   dx: number;
   dz: number;
   k: number;
@@ -37,10 +37,6 @@ export function refreshWaves(): WaveParam[] {
   return params;
 }
 refreshWaves();
-
-export function getWaves(): WaveParam[] {
-  return params;
-}
 
 /** Przesunięcie Gerstnera punktu spoczynkowego (x0,z0). */
 export function gerstner(x0: number, z0: number, t: number): { x: number; y: number; z: number } {

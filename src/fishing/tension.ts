@@ -23,7 +23,7 @@ export interface TensionParams {
   minLine: number;
 }
 
-export interface TensionStep {
+interface TensionStep {
   T: number;
   slipping: boolean;
   /** prędkość oddawania żyłki przez hamulec [m/s] */
