@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { events } from '../core/Events';
 import { Rng } from '../core/Rng';
+import { FX_LAYER } from './layers';
 import type { World } from '../world/World';
 
 interface Drop {
@@ -44,6 +45,7 @@ export class WaterEffects {
     );
     this.points.frustumCulled = false;
     this.points.renderOrder = 4;
+    this.points.layers.set(FX_LAYER);
     scene.add(this.points);
     for (let i = 0; i < this.N; i++) this.drops.push({ alive: false, p: new THREE.Vector3(0, -99, 0), v: new THREE.Vector3(), life: 0, max: 1 });
 
@@ -56,6 +58,7 @@ export class WaterEffects {
       );
       m.visible = false;
       m.renderOrder = 2;
+      m.layers.set(FX_LAYER);
       scene.add(m);
       this.rings.push({ mesh: m, life: 0, max: 1, size: 1, x: 0, z: 0 });
     }

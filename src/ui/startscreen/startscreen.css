@@ -90,6 +90,9 @@
 #startscreen .fish-card:hover{transform:translateY(-4px);border-color:rgba(255,244,220,.25)}
 #startscreen .fimg{position:relative}
 #startscreen .fimg svg{width:100%;height:72px;display:block}
+#startscreen .fimg img{width:100%;height:72px;object-fit:contain;display:block;filter:drop-shadow(0 4px 6px rgba(0,0,0,.35));transition:transform .3s}
+#startscreen .fish-card.art:not(.caught) .fimg img{filter:brightness(0) opacity(.55)}
+#startscreen .fish-card.art.caught:hover .fimg img{transform:rotate(-4deg) scale(1.06)}
 #startscreen .fimg .q{position:absolute;inset:0;display:grid;place-items:center;font:400 30px/1 'Lilita One',sans-serif;color:rgba(255,244,220,.5)}
 #startscreen .fish-card h3{margin-top:8px;font:400 19px/1.1 'Lilita One',sans-serif;letter-spacing:.03em}
 #startscreen .fish-card .lat{margin-top:2px;font-size:11px;font-style:italic;font-weight:700;color:rgba(255,244,220,.5)}

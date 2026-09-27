@@ -1,5 +1,5 @@
 import './styles.css';
-import { CFG, speciesById } from '../config';
+import { CFG, speciesById, type SpeciesId } from '../config';
 import { fmt, fmtWeight } from '../core/math';
 import type { Caption } from '../cutscene/Timeline';
 import type { CatchLog } from '../fishing/CatchLog';
@@ -7,6 +7,11 @@ import type { Objective } from '../player/Preparation';
 import type { MsgKind } from '../fishing/FishingController';
 
 const WORM_SVG = `<svg viewBox="0 0 52 30"><path d="M4 20c6-12 12 4 18-6s12 6 18-4 8 2 8 2" fill="none" stroke="#d9707a" stroke-width="6" stroke-linecap="round"/><circle cx="47" cy="11" r="1.2" fill="#3a1c1c"/></svg>`;
+
+/** Ilustracja gatunku (reference/02-postacie-i-obiekty/04–08 z wyciętym tłem → public/ui/fish). */
+export function fishArtUrl(id: SpeciesId): string {
+  return `ui/fish/${id}.webp`;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -58,7 +63,7 @@ export class UI {
   readonly pause: HTMLElement;
   readonly resumeBtn: HTMLButtonElement;
   readonly catchScreen: HTMLElement;
-  readonly catchCanvas: HTMLCanvasElement;
+  private catchArt: HTMLImageElement;
   readonly releaseBtn: HTMLButtonElement;
   private catchInfo: HTMLElement;
   readonly logScreen: HTMLElement;
@@ -151,9 +156,9 @@ export class UI {
     this.catchScreen = el(
       'div',
       { id: 'catch', class: 'screen interactive hidden' },
-      `<div class="card"><canvas width="600" height="480"></canvas><div class="info"></div></div>`,
+      `<div class="card"><div class="fishart"><div class="drops"></div><img alt=""></div><div class="info"></div></div>`,
     );
-    this.catchCanvas = this.catchScreen.querySelector('canvas')!;
+    this.catchArt = this.catchScreen.querySelector('.fishart img')!;
     this.catchInfo = this.catchScreen.querySelector('.info')!;
     this.releaseBtn = el('button', { class: 'btn', id: 'btnRelease' }, 'Wypuść');
 
@@ -334,9 +339,15 @@ export class UI {
     this.pause.classList.toggle('hidden', !v);
   }
 
-  showCatch(info: { species: string; lengthCm: number; weightG: number; record: boolean; fightTime: number } | null): void {
+  showCatch(info: { id: SpeciesId; species: string; lengthCm: number; weightG: number; record: boolean; fightTime: number } | null): void {
     this.catchScreen.classList.toggle('hidden', !info);
     if (!info) return;
+    this.catchArt.src = fishArtUrl(info.id);
+    this.catchArt.alt = info.species;
+    // ryba „w dłoniach”: większa dla dużych okazów
+    const sp = speciesById(info.id);
+    const k = (info.lengthCm - sp.minCm) / Math.max(1, sp.maxCm - sp.minCm);
+    this.catchArt.style.setProperty('--size', `${(0.82 + 0.18 * k).toFixed(3)}`);
     this.catchInfo.innerHTML = `
       ${info.record ? '<div class="record">NOWY REKORD!</div>' : ''}
       <div class="species">${info.species}</div>

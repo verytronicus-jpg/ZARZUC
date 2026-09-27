@@ -9,6 +9,8 @@ export interface StartScreenFish {
   whisk?: boolean;
   caught?: boolean;
   record?: string;
+  /** ilustracja gatunku (PNG/WebP z przezroczystym tłem); bez niej – sylwetka SVG */
+  img?: string;
 }
 
 export interface StartScreenOptions {

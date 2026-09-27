@@ -766,7 +766,7 @@ function fishSVG(f) {
 }
 function renderFish() {
   $('#fishGrid').innerHTML = FISH.map((f, i) =>
-    `<div class="fish-card${f.caught ? ' caught' : ''}" style="--i:${i}"><div class="fimg">${fishSVG(f)}${f.caught ? '' : '<span class="q">?</span>'}</div><h3>${f.name}</h3><div class="lat">${f.lat}</div><span class="rar" style="color:${f.rc}">${f.caught ? f.record : f.rar}</span></div>`).join('');
+    `<div class="fish-card${f.caught ? ' caught' : ''}${f.img ? ' art' : ''}" style="--i:${i}"><div class="fimg">${f.img ? `<img src="${f.img}" alt="" draggable="false">` : fishSVG(f)}${f.caught ? '' : '<span class="q">?</span>'}</div><h3>${f.name}</h3><div class="lat">${f.lat}</div><span class="rar" style="color:${f.rc}">${f.caught ? f.record : f.rar}</span></div>`).join('');
   const n = FISH.filter(f => f.caught).length;
   const pr = $('.progress-row span:last-child'); if (pr) pr.textContent = `${n} / ${FISH.length}`;
   const pb = $('.pbar i'); if (pb) pb.style.width = `${Math.max(3, n / FISH.length * 100)}%`;

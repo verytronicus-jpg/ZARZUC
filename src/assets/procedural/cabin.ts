@@ -13,6 +13,7 @@ import type { AssetFactory } from '../AssetRegistry';
 import { PIVOTS } from '../AssetRegistry';
 import { group } from '../materials';
 import { C, flat, jitter, merge, paint, solid } from './geo';
+import { triplanarDetail } from '../../render/materialsFx';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -429,7 +430,7 @@ export class CabinFactory implements AssetFactory {
 let woodMat: THREE.MeshStandardMaterial | null = null;
 let metalMat: THREE.MeshStandardMaterial | null = null;
 export function cabinWoodMaterial(): THREE.MeshStandardMaterial {
-  if (!woodMat) woodMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  if (!woodMat) woodMat = triplanarDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }), 'wood', 0.9, 0.55);
   return woodMat;
 }
 export function cabinMetalMaterial(): THREE.MeshStandardMaterial {
@@ -486,7 +487,7 @@ export class BoatFactory implements AssetFactory {
     }
     rng.next();
     const g = group('boat');
-    const m = new THREE.Mesh(merge(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }));
+    const m = new THREE.Mesh(merge(parts), triplanarDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }), 'wood', 1.8, 0.45));
     m.castShadow = true;
     m.receiveShadow = true;
     m.name = 'boat_hull';

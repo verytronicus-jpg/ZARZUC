@@ -14,13 +14,14 @@ import type { AssetRegistry } from '../assets/AssetRegistry';
 import { World } from '../world/World';
 import { resetWorldCaches, porchStart } from '../world/terrainMath';
 import { DoorIntro } from '../cutscene/DoorIntro';
+import { preloadTextures } from '../render/textures';
+import { reflectable } from '../render/layers';
 import * as terrainMath from '../world/terrainMath';
 import { Player } from '../player/Player';
 import { Preparation } from '../player/Preparation';
 import { FishingController, type CaughtFish } from '../fishing/FishingController';
 import { CatchLog } from '../fishing/CatchLog';
-import { UI } from '../ui/UI';
-import { CatchPreview } from '../ui/CatchPreview';
+import { UI, fishArtUrl } from '../ui/UI';
 import { GameAudio } from '../audio/GameAudio';
 import { DebugPanel } from '../debug/DebugPanel';
 import { mountStartScreen, type StartScreenHandle, type StartScreenFish } from '../ui/startscreen/startscreen.js';
@@ -46,7 +47,6 @@ export class Game {
   readonly ui: UI;
   readonly audio = new GameAudio();
   readonly log = new CatchLog();
-  readonly preview: CatchPreview;
   readonly debug: DebugPanel;
   intro: DoorIntro | null = null;
   private startScreen: StartScreenHandle | null = null;
@@ -72,13 +72,15 @@ export class Game {
     this.ctx = new RenderContext(canvas);
     this.assets = createDefaultRegistry();
     this.world = new World(this.ctx, this.assets, this.rng.fork());
-    const character = this.assets.create('character');
+    this.ctx.water = this.world.water;
+    const character = reflectable(this.assets.create('character'));
     this.ctx.scene.add(character);
     this.player = new Player(character, this.world);
     this.camRig = new CameraRig(this.ctx.camera, this.world);
     this.fishing = new FishingController(this.world, this.player, this.input, this.rng.fork(), this.assets, this.ctx.scene);
-    this.rodObj = this.assets.create('rod');
+    this.rodObj = reflectable(this.assets.create('rod'));
     this.boxObj = this.assets.create('wormBox');
+    reflectable(this.fishing.floatObj);
     for (const o of [this.rodObj, this.boxObj])
       o.traverse((c) => {
         const m = c as THREE.Mesh;
@@ -86,7 +88,6 @@ export class Game {
       });
     this.prep = new Preparation(this.player, this.fishing, this.camRig, this.rodObj, this.boxObj);
     this.effects = new WaterEffects(this.ctx.scene, this.world);
-    this.preview = new CatchPreview(this.ui.catchCanvas, this.assets);
     this.debug = new DebugPanel((path) => this.onConfigChange(path));
 
     this.fishing.onMessage = (t, k, time) => this.ui.message(t, k, time);
@@ -118,8 +119,12 @@ export class Game {
       BOOT: {
         enter: () => {
           this.player.root.visible = false;
-          this.ui.hideLoading();
-          queueMicrotask(() => this.fsm.go('START_SCREEN'));
+          // tekstury świata muszą być w pamięci, zanim cokolwiek zobaczymy (inaczej czarny teren)
+          const timeout = new Promise<void>((r) => setTimeout(r, CFG.render.preloadTimeoutMs));
+          void Promise.race([preloadTextures(), timeout]).then(() => {
+            this.ui.hideLoading();
+            if (this.fsm.is('BOOT')) this.fsm.go('START_SCREEN');
+          });
         },
       },
       START_SCREEN: {
@@ -142,7 +147,7 @@ export class Game {
             onOptions: (o) => {
               if (o.nature !== undefined) CFG.audio.ambient = 0.45 * o.nature;
               if (o.sfx !== undefined) CFG.audio.sfx = o.sfx ? 0.9 : 0;
-              if (o.quality) this.ctx.setQuality(o.quality);
+              if (o.quality) this.setQuality(o.quality);
               this.audio.applyVolumes();
             },
           });
@@ -236,7 +241,7 @@ export class Game {
     };
     return CFG.species.map((sp) => {
       const rec = this.log.records[sp.id];
-      return { name: sp.name, ...look[sp.id], caught: !!rec, record: rec ? `Rekord ${fmtWeight(rec.weightG)}` : undefined };
+      return { name: sp.name, ...look[sp.id], img: fishArtUrl(sp.id), caught: !!rec, record: rec ? `Rekord ${fmtWeight(rec.weightG)}` : undefined };
     });
   }
 
@@ -282,20 +287,25 @@ export class Game {
     this.lastCatchRecord = record;
     this.catchOpen = true;
     this.input.exitLock();
-    this.ui.showCatch({ species: sp.name, lengthCm: f.lengthCm, weightG: f.weightG, record, fightTime: f.fightTime });
-    this.preview.show(f.species, f.lengthCm);
+    this.ui.showCatch({ id: sp.id, species: sp.name, lengthCm: f.lengthCm, weightG: f.weightG, record, fightTime: f.fightTime });
   }
 
   private closeCatch(): void {
     this.catchOpen = false;
     this.ui.showCatch(null);
-    this.preview.hide();
     events.emit('fishSplash', { x: this.player.pos.x + Math.sin(this.player.yaw) * 1.5, y: 0, z: this.player.pos.z + Math.cos(this.player.yaw) * 1.5, strength: 0.4 });
     this.fishing.releaseCaught();
   }
 
+  /** Preset jakości: render (rozdzielczość, cienie, post, odbicia) i świat (gęstość trawy, zasięg cieni roślin). */
+  setQuality(q: 'high' | 'low'): void {
+    this.ctx.setQuality(q);
+    this.world.applyQuality();
+  }
+
   private onConfigChange(path: string): void {
-    if (path.startsWith('sun') || path.startsWith('render')) this.ctx.applySun();
+    if (path.startsWith('sun') || path.startsWith('render') || path.startsWith('post') || path.startsWith('sky')) this.ctx.applySun();
+    if (path.startsWith('quality')) this.setQuality(CFG.quality.current);
     if (path.startsWith('water')) this.world.water.refresh();
     if (path.startsWith('reel.drag')) this.fishing.tension.dragN = this.fishing.dragKgf * KGF;
     if (path.startsWith('line') || path.startsWith('rod') || path.startsWith('reel')) {
@@ -413,10 +423,11 @@ export class Game {
     const shadowAt = this.shadowTarget();
     this.ctx.followShadow(shadowAt);
     this.world.updateShadowProxies(shadowAt);
+    this.world.updateGrass(this.fsm.is('INTRO', 'GAMEPLAY', 'PAUSE') ? this.player.root.position : this.ctx.camera.position, this.world.grassDirty);
+    this.world.grassDirty = false;
     this.world.updateEffects(frameDt);
-    if (st !== 'START_SCREEN' && st !== 'BOOT' && !CFG.debug.skipRender) this.ctx.render();
+    if (st !== 'START_SCREEN' && st !== 'BOOT' && !CFG.debug.skipRender) this.ctx.render(frameDt);
     if (!CFG.debug.skipRender) this.renderFloatCam(frameDt);
-    this.preview.update(frameDt);
     this.audio.update(scaledDt, this.fishing.reeling && this.fishing.rigOut, this.fishing.fsm.is('FIGHT') ? this.fishing.dragPayout : 0);
     if (this.debugOverlay) this.ui.setDebug(this.debugText());
 
@@ -451,18 +462,8 @@ export class Game {
     this.floatCam.lookAt(b.x, f.bobber.lastSurfaceY + 0.06, b.z);
     this.floatCam.aspect = r.w / r.h;
     this.floatCam.updateProjectionMatrix();
-    const R = this.ctx.renderer;
-    const H = R.domElement.clientHeight;
-    R.shadowMap.autoUpdate = false;
-    this.ctx.sky.follow(this.floatCam);
-    R.setScissorTest(true);
-    R.setViewport(r.x, H - r.y - r.h, r.w, r.h);
-    R.setScissor(r.x, H - r.y - r.h, r.w, r.h);
-    R.render(this.ctx.scene, this.floatCam);
-    R.setScissorTest(false);
-    this.ctx.sky.follow(this.ctx.camera);
-    R.setViewport(0, 0, R.domElement.clientWidth, H);
-    R.shadowMap.autoUpdate = true;
+    const H = this.ctx.renderer.domElement.clientHeight;
+    this.ctx.renderViewport(this.floatCam, r.x, H - r.y - r.h, r.w, r.h);
   }
 
   private shadowTarget(): THREE.Vector3 {

@@ -96,6 +96,8 @@ export const CFG = {
     fogNear: 70,
     fogFar: 720,
     cameraFar: 3000,
+    /** maks. czas czekania na tekstury przed ekranem startowym [ms] */
+    preloadTimeoutMs: 8000,
     /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
     shadowProxyRadius: 55,
     shadowProxyStep: 4,
@@ -109,10 +111,12 @@ export const CFG = {
     color: 0xffc38a,
     hemiSky: 0xbac6e4,
     hemiGround: 0x6a5a40,
-    hemiIntensity: 1.35,
+    hemiIntensity: 0.75,
+    /** mapa otoczenia z nieba (oświetlenie obrazem) */
+    envIntensity: 0.4,
     /** ciepłe światło wypełniające od strony chatki (bez cieni) – malarskie doświetlenie frontów */
     fillColor: 0xffd2a8,
-    fillIntensity: 0.7,
+    fillIntensity: 0.5,
     fillAzimuthDeg: -20,
     fillElevationDeg: 25,
   },
@@ -135,7 +139,7 @@ export const CFG = {
     panoramaTop: 0x8a97c8,
     horizon: 0xf2b27a,
     bottom: 0xcfa88c,
-    sunBoost: 6,
+    sunBoost: 3,
     brightness: 1.0,
   },
 
@@ -288,8 +292,7 @@ export const CFG = {
     fernCount: 360,
     rockCount: 90,
     stumpCount: 22,
-    farTreeCount: 9000,
-    grassCount: 5200,
+    farTreeCount: 20000,
 
     // ---------- gracz ----------
     /** obszar, po którym chodzi gracz (wielokąt x,z); poza nim gęsty las */
@@ -333,10 +336,28 @@ export const CFG = {
       { dirDeg: -15, wavelength: 2.7, amplitude: 0.011, steepness: 0.3 },
       { dirDeg: 110, wavelength: 1.6, amplitude: 0.006, steepness: 0.25 },
     ],
-    shallowColor: 0x5fb3a3,
+    /** kolor płycizny (rozproszenie przy małej grubości), głębi i rozproszenia w toni */
+    shallowColor: 0x8fd6c4,
     deepColor: 0x145060,
-    /** widoczność pod wodą: tempo zaniku koloru z głębokością [1/m] */
-    underwaterFade: 0.9,
+    scatterColor: 0x1d6670,
+    /** pochłanianie światła przez wodę [1/m] (r, g, b) – czerwień ginie najszybciej → turkus */
+    absorb: [0.55, 0.19, 0.16] as [number, number, number],
+    normalScale: 0.32,
+    normalTiling: [0.085, 0.21] as [number, number],
+    normalSpeed: 0.035,
+    refractStrength: 0.035,
+    reflectDistort: 0.004,
+    /** mnożnik jasności odbić (panorama/planarne) */
+    reflectStrength: 0.95,
+    fresnelF0: 0.025,
+    /** piana: grubość wody [m], przy której znika, siła */
+    foamDepth: 0.09,
+    foamStrength: 0.75,
+    /** iskrzenie słońca na falach (wykładnik, siła HDR) */
+    glitterPower: 700,
+    glitterStrength: 14,
+    /** widoczność ryby pod wodą: tempo zaniku koloru z głębokością [1/m] (woda sama też pochłania światło) */
+    underwaterFade: 0.35,
     /** gęstość wody [kg/m³] */
     density: 1000,
   },
@@ -629,6 +650,120 @@ export const CFG = {
     endPitch: 0.36,
     /** postać staje się widoczna, gdy kamera odjedzie od głowy na tyle [m] */
     revealDistance: 0.6,
+  },
+
+  /** presety jakości grafiki (Opcje → Jakość grafiki) */
+  quality: {
+    current: 'high' as 'high' | 'low',
+    high: {
+      /** maks. liczba pikseli renderu (reszta skalowana przez przeglądarkę) */
+      pixelBudget: 2.6e6,
+      pixelRatioMax: 1.5,
+      msaa: 4,
+      ao: true,
+      rays: true,
+      reflection: true,
+      reflectionScale: 0.5,
+      refractScale: 1,
+      shadowMapSize: 2048,
+      shadowFar: 110,
+      shadowRadius: 3,
+      shadowProxyRadius: 65,
+      grassDensity: 1,
+      grassRadius: 34,
+    },
+    low: {
+      pixelBudget: 1.2e6,
+      pixelRatioMax: 1,
+      msaa: 0,
+      ao: false,
+      rays: false,
+      reflection: false,
+      reflectionScale: 0.35,
+      refractScale: 0.5,
+      shadowMapSize: 1024,
+      shadowFar: 60,
+      shadowRadius: 2,
+      shadowProxyRadius: 40,
+      grassDensity: 0.45,
+      grassRadius: 24,
+    },
+  },
+
+  /** post-processing: mgła, mgiełka nad wodą, bloom, AO, promienie słońca, grading „ciepły poranek” */
+  post: {
+    exposure: 0.82,
+    fogColor: 0xb0b4b8,
+    fogSunColor: 0xffc48a,
+    fogDensity: 0.0006,
+    fogHeight: 0,
+    fogFalloff: 0.012,
+    fogStart: 45,
+    mistColor: 0xeedcd0,
+    mistDensity: 0.42,
+    mistHeight: 1.7,
+    mistNoise: 0.85,
+    mistNear: 22,
+    bloomThreshold: 1.1,
+    bloomKnee: 0.6,
+    bloomStrength: 0.22,
+    aoRadius: 0.9,
+    aoIntensity: 1.1,
+    aoStrength: 0.65,
+    raysStrength: 0.4,
+    raysDecay: 0.965,
+    raysDensity: 0.95,
+    raysThreshold: 0.8,
+    /** lift/gamma/gain (liniowo, r g b) */
+    lift: [0.025, 0.018, 0.03] as [number, number, number],
+    gamma: [1.0, 1.0, 0.97] as [number, number, number],
+    gain: [1.02, 1.0, 0.96] as [number, number, number],
+    /** podział tonów (0,5 = neutralnie): cienie chłodne, światła ciepłe */
+    shadowTint: 0x7383a0,
+    highlightTint: 0xf0bc90,
+    splitTone: 0.07,
+    saturation: 1.02,
+    contrast: 1.05,
+    vignette: 0.3,
+    grain: 0.012,
+  },
+
+  /** trawa na wietrze (kępki źdźbeł wokół gracza) */
+  grass: {
+    clumpsPerM2: 3.2,
+    bladesPerClump: 7,
+    /** segmenty źdźbła (2 = 4 trójkąty) */
+    segments: 2,
+    height: 0.38,
+    width: 0.035,
+    maxInstances: 14000,
+    /** co ile metrów ruchu gracza odświeżać zestaw kępek */
+    refreshStep: 3,
+    colorBase: 0x2c4614,
+    colorMid: 0x62872a,
+    colorTip: 0xc2bb62,
+    sway: 0.16,
+    gust: 0.38,
+    windDirX: 0.8,
+    windDirZ: 0.6,
+  },
+
+  /** tekstury terenu: gęstość kafelków [1/m] i przejście w kolor wierzchołków w oddali */
+  terrainTex: {
+    grassTiling: 0.22,
+    forestTiling: 0.2,
+    pathTiling: 0.33,
+    sandTiling: 0.35,
+    bedTiling: 0.28,
+    rockTiling: 0.22,
+    fadeStart: 140,
+    fadeEnd: 320,
+    centerX: -5,
+    centerZ: 30,
+    /** udział koloru wierzchołka (odcienie) w teksturowanym albedo */
+    tint: 0.6,
+    /** pas mokrego brzegu nad linią wody [m] */
+    wetAbove: 0.18,
   },
 
   /** dym z komina chatki */

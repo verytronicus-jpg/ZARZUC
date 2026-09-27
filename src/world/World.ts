@@ -30,11 +30,13 @@ import type { Collider } from '../player/collision';
 import type { AssetKind, AssetRegistry } from '../assets/AssetRegistry';
 import type { RenderContext } from '../render/RenderContext';
 import { ChimneySmoke } from './ChimneySmoke';
+import { GrassField } from './GrassField';
+import { windUniforms } from './wind';
 import { cabinLayout } from '../assets/procedural/cabin';
-import { SHADOW_LAYER } from '../render/layers';
+import { SHADOW_LAYER, REFLECT_LAYER, reflectable } from '../render/layers';
+import { terrainMaterial, triplanarDetail } from '../render/materialsFx';
 
-/** Wspólne uniformy wiatru dla roślinności (czas renderu). */
-export const windUniforms = { uTime: { value: 0 }, uWind: { value: 1 } };
+export { windUniforms } from './wind';
 
 function colorGeo(geo: THREE.BufferGeometry, hex: number | ((y: number) => THREE.Color)): THREE.BufferGeometry {
   const g = geo.index ? geo.toNonIndexed() : geo;
@@ -78,6 +80,8 @@ export class World {
   cabin!: THREE.Object3D;
   boat!: THREE.Object3D;
   lamp: THREE.PointLight | null = null;
+  grass!: GrassField;
+  grassDirty = false;
   smoke!: ChimneySmoke;
   time = 0;
   private boatBase = new THREE.Vector3();
@@ -185,6 +189,12 @@ export class World {
     this.time += dt;
   }
 
+  /** Preset jakości: gęstość trawy i zasięg cieni roślinności (odświeżenie przy następnej klatce). */
+  applyQuality(): void {
+    this.shadowFocus.set(1e9, 0, 1e9);
+    this.grassDirty = true;
+  }
+
   setRenderTime(t: number): void {
     this.water.setTime(t);
     windUniforms.uTime.value = t;
@@ -205,12 +215,12 @@ export class World {
 
   /**
    * Cienie roślinności: do siatek-cieni (warstwa SHADOW_LAYER, niewidoczna dla kamery) trafiają tylko instancje
-   * w promieniu CFG.render.shadowProxyRadius od punktu – mapa cieni nie przelicza całego lasu.
+   * w promieniu (preset jakości) od punktu – mapa cieni nie przelicza całego lasu.
    */
   updateShadowProxies(focus: THREE.Vector3): void {
     if (focus.distanceToSquared(this.shadowFocus) < CFG.render.shadowProxyStep ** 2) return;
     this.shadowFocus.copy(focus);
-    const R2 = CFG.render.shadowProxyRadius ** 2;
+    const R2 = CFG.quality[CFG.quality.current].shadowProxyRadius ** 2;
     const tmp = new THREE.Matrix4();
     for (const set of this.shadowSets) {
       let n = 0;
@@ -238,6 +248,14 @@ export class World {
     const nz = hm.nz;
     const pos = new Float32Array(nx * nz * 3);
     const col = new Float32Array(nx * nz * 3);
+    // wagi tekstur: A = trawa, ściółka, ścieżka, piasek · B = dno, skała
+    const splatA = new Float32Array(nx * nz * 4);
+    const splatB = new Float32Array(nx * nz * 3);
+    const wgt = [0, 0, 0, 0, 0, 0];
+    const mixTo = (idx: number, k: number) => {
+      for (let q = 0; q < 6; q++) wgt[q] *= 1 - k;
+      wgt[idx] += k;
+    };
     const grassA = new THREE.Color(0x6f8a2e);
     const grassB = new THREE.Color(0xa3a340);
     const grassDry = new THREE.Color(0xb8a456);
@@ -266,30 +284,47 @@ export class World {
         const r = lakeR(x, z);
         const n = 0.5 + 0.5 * Math.sin(x * 0.21 + Math.sin(z * 0.13) * 2) * Math.cos(z * 0.17 - x * 0.05);
         const n2 = 0.5 + 0.5 * Math.sin(x * 0.9 + z * 0.7) * Math.sin(z * 1.1 - x * 0.4);
+        wgt.fill(0);
+        let canopyW = 0;
         if (r < 1) {
           const d = -h;
+          const sandW = 1 - smoothstep(0.05, 0.55, d);
+          wgt[3] = sandW;
+          wgt[4] = 1 - sandW;
           c.copy(bed).lerp(sand, 1 - smoothstep(0.0, 0.5, d)).lerp(mud, smoothstep(0.6, 2.0, d) * 0.6).lerp(deep, smoothstep(1.8, 4.2, d));
           // jasne kamienie na dnie przy brzegu
           c.multiplyScalar(0.9 + 0.2 * n2);
         } else {
           const bd = boundsDistance(x, z);
           const forestW = smoothstep(-4, 12, bd) * (1 - clearingMask(x, z));
+          wgt[0] = 1 - forestW;
+          wgt[1] = forestW;
           c.copy(grassA).lerp(grassB, n).lerp(grassDry, smoothstep(0.55, 1, n2) * 0.45);
           c.lerp(forest, forestW * 0.75).lerp(needles, forestW * smoothstep(0.4, 0.9, n) * 0.4);
           c.lerp(clearing, clearingMask(x, z) * 0.5);
-          c.lerp(sand, 1 - smoothstep(1.0, 1.035, r));
+          const shoreW = 1 - smoothstep(1.0, 1.035, r);
+          c.lerp(sand, shoreW);
+          mixTo(3, shoreW);
           // skalisty cypel
           const pd = Math.hypot(x - W.pointX, z - W.pointZ) / (W.pointRadius * 1.5);
-          c.lerp(rock, (1 - smoothstep(0.3, 1, pd)) * 0.7);
+          const rockW = (1 - smoothstep(0.3, 1, pd)) * 0.9;
+          c.lerp(rock, rockW * 0.78);
+          mixTo(5, rockW);
           // ścieżka (udeptana ziemia) z ciemniejszym brzegiem
           const pm = x > -40 && x < 20 && z > 30 && z < 100 ? pathMask(x, z) : 0;
-          if (pm > 0) c.lerp(pathEdge, smoothstep(0, 0.5, pm) * 0.6).lerp(path, smoothstep(0.35, 1, pm));
+          if (pm > 0) {
+            c.lerp(pathEdge, smoothstep(0, 0.5, pm) * 0.6).lerp(path, smoothstep(0.35, 1, pm));
+            mixTo(2, smoothstep(0.15, 0.85, pm));
+          }
           // las poza obszarem gry: ciemne dno lasu / korony widziane z daleka
           const far = Math.max(smoothstep(20, 60, bd), smoothstep(8, 30, shoreDistance(x, z, r)) * smoothstep(0, 20, bd));
           c.lerp(canopy, far * 0.85);
+          canopyW = far;
           c.multiplyScalar(0.92 + 0.08 * n2);
         }
         col.set([c.r, c.g, c.b], k * 3);
+        splatA.set([wgt[0], wgt[1], wgt[2], wgt[3]], k * 4);
+        splatB.set([wgt[4], wgt[5], canopyW], k * 3);
       }
     }
     const idx: number[] = [];
@@ -306,10 +341,13 @@ export class World {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('aSplatA', new THREE.BufferAttribute(splatA, 4));
+    geo.setAttribute('aSplatB', new THREE.BufferAttribute(splatB, 3));
     geo.setIndex(idx);
     geo.computeVertexNormals();
     geo.computeBoundingSphere();
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+    const m = new THREE.Mesh(geo, terrainMaterial());
+    reflectable(m);
     m.receiveShadow = true;
     m.name = 'terrain';
     return m;
@@ -356,7 +394,8 @@ export class World {
     }
     const geo = mergeGeometries(parts, false)!;
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+    const m = new THREE.Mesh(geo, triplanarDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 'wood', 1.1, 0.55));
+    reflectable(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.name = 'pier';
@@ -373,6 +412,7 @@ export class World {
     this.boat.position.copy(this.boatBase);
     this.boat.rotation.order = 'YXZ';
     this.boat.rotation.y = Math.PI + W.boatYawDeg * DEG;
+    reflectable(this.boat);
     this.group.add(this.boat);
   }
 
@@ -385,6 +425,7 @@ export class World {
     this.cabin = this.assets.create('cabin');
     this.cabin.position.set(c.x, c.ground, c.z);
     this.cabin.rotation.y = c.yaw;
+    reflectable(this.cabin);
     this.group.add(this.cabin);
     // wnętrze przy drzwiach (widać je w intro i przez otwarte drzwi) + ciepłe światło lampy
     this.cabin.add(this.assets.create('cabinInterior'));
@@ -464,7 +505,8 @@ export class World {
     if (!parts.length) return;
     const geo = mergeGeometries(parts, false)!;
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+    const m = new THREE.Mesh(geo, triplanarDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 'wood', 1.6, 0.5));
+    reflectable(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.name = 'fence';
@@ -482,6 +524,7 @@ export class World {
     log.scale.set(len / 16, 1, 1);
     log.position.set(W.logX0, y0, W.logZ0);
     log.rotation.set(0, Math.atan2(-dz, dx), -Math.atan2(y0 - y1, len));
+    reflectable(log);
     this.group.add(log);
     // kolizja części na lądzie
     for (let t = 0; t <= 1; t += 0.08) {
@@ -496,7 +539,11 @@ export class World {
   // instancje
   // =====================================================================
   /** InstancedMesh z modelu z rejestru (każda siatka modelu → osobny InstancedMesh, wspólne macierze). */
-  private instanced(kind: AssetKind, list: Inst[], opts: { cast?: boolean; sway?: number; name?: string } = {}): THREE.InstancedMesh[] {
+  private instanced(
+    kind: AssetKind,
+    list: Inst[],
+    opts: { cast?: boolean; sway?: number; name?: string; reflect?: boolean; detail?: { tex: 'rock' | 'bark' | 'wood'; scale: number; strength: number } } = {},
+  ): THREE.InstancedMesh[] {
     if (!list.length) return [];
     const src = this.assets.create(kind);
     src.updateMatrixWorld(true);
@@ -513,6 +560,7 @@ export class World {
       const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
       const baseMat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
       const mat = this.vegMaterial(baseMat, opts.sway ?? 0);
+      if (opts.detail) triplanarDetail(mat, opts.detail.tex, opts.detail.scale, opts.detail.strength, false);
       const im = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((it, i) => {
         e.set(it.rotX ?? 0, it.rotY, it.rotZ ?? 0);
@@ -528,6 +576,7 @@ export class World {
       im.receiveShadow = true;
       im.name = opts.name ?? kind;
       im.computeBoundingSphere();
+      if (opts.reflect ?? true) im.layers.enable(REFLECT_LAYER);
       this.group.add(im);
       out.push(im);
       if (opts.cast ?? true) {
@@ -723,12 +772,15 @@ export class World {
       if (inFine) continue;
       if (lakeR(x, z) < 1.04) continue;
       const d = Math.hypot(x * 0.8, z + 150);
-      if (rng.next() > lerp(1, 0.15, smoothstep(250, 650, d))) continue;
+      // gęsto na zboczach nad jeziorem, rzadziej w oddali (mgła i tak je wtapia)
+      if (rng.next() > lerp(1, 0.08, smoothstep(180, 620, d))) continue;
       const s = rng.range(0.9, 1.7) * lerp(1, 1.8, smoothstep(200, 600, d));
       far.push({ x, y: this.terrainAt(x, z) - 0.3, z, rotY: rng.range(0, 6.28), s, sy: rng.range(0.9, 1.3), tint: rng.range(0.75, 1.1) });
     }
 
-    this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near' });
+    this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false });
+    // w odbiciu wystarczy uproszczony świerk (mniej trójkątów w drugim przebiegu)
+    for (const im of this.instanced('spruceMid', near, { cast: false, name: 'spruce_near_reflect' })) im.layers.set(REFLECT_LAYER);
     this.instanced('spruceMid', midCast, { cast: true, sway: 0.0009, name: 'spruce_mid_cast' });
     this.instanced('spruceMid', midFar, { cast: false, sway: 0.0009, name: 'spruce_mid' });
     this.instanced('farTree', far, { cast: false, name: 'far_trees' });
@@ -779,9 +831,9 @@ export class World {
       this.occupy(x, z, 0.8);
       if (bd < 2) this.colliders.push({ kind: 'circle', x, z, r: 0.4 });
     }
-    this.instanced('bush', bushes, { cast: true, sway: 0.03, name: 'bushes' });
-    this.instanced('fern', ferns, { cast: false, sway: 0.06, name: 'ferns' });
-    this.instanced('stump', stumps, { cast: true, name: 'stumps' });
+    this.instanced('bush', bushes, { cast: true, sway: 0.03, name: 'bushes', reflect: false });
+    this.instanced('fern', ferns, { cast: false, sway: 0.06, name: 'ferns', reflect: false });
+    this.instanced('stump', stumps, { cast: true, name: 'stumps', reflect: false, detail: { tex: 'bark', scale: 1.4, strength: 0.4 } });
   }
 
   // =====================================================================
@@ -859,11 +911,11 @@ export class World {
       }
       const d = lakeDepth(x, z);
       if (d < 0.35 || d > 1.8) continue;
-      lilies.push({ x, y: CFG.water.level, z, rotY: rng.range(0, 6.28), s: rng.range(0.8, 1.4) });
+      lilies.push({ x, y: CFG.water.level + 0.03, z, rotY: rng.range(0, 6.28), s: rng.range(0.8, 1.4) });
     }
     this.instanced('reeds', reeds, { cast: true, sway: 0.03, name: 'reeds' });
     this.instanced('cattail', cattails, { cast: true, sway: 0.03, name: 'cattails' });
-    this.instanced('lily', lilies, { cast: false, name: 'lilies' });
+    this.instanced('lily', lilies, { cast: false, name: 'lilies', reflect: false });
   }
 
   // =====================================================================
@@ -915,65 +967,43 @@ export class World {
       this.colliders.push({ kind: 'circle', x, z, r: 0.8 * k });
       this.occupy(x, z, k * 1.2);
     }
-    this.instanced('rock', rocks, { cast: true, name: 'rocks' });
+    this.instanced('rock', rocks, { cast: true, name: 'rocks', detail: { tex: 'rock', scale: 0.45, strength: 0.55 } });
   }
 
   // =====================================================================
-  // trawa
+  // trawa (kępki źdźbeł na wietrze, rysowane wokół gracza)
   // =====================================================================
   private buildGrass(): void {
-    const tuft: THREE.BufferGeometry[] = [];
-    const blade = (ang: number, lean: number, h: number, off: number) => {
-      const g = new THREE.BufferGeometry();
-      const w = 0.035;
-      const tipX = Math.sin(lean) * h * 0.35;
-      g.setAttribute('position', new THREE.Float32BufferAttribute([-w, 0, 0, w, 0, 0, tipX, h, 0.02], 3));
-      g.computeVertexNormals();
-      g.rotateY(ang);
-      g.translate(Math.cos(ang * 3) * off, 0, Math.sin(ang * 3) * off);
-      return colorGeo(g, (y) => new THREE.Color(0x5d7a26).lerp(new THREE.Color(0xc8bc62), clamp01(y / 0.45)));
-    };
-    for (let i = 0; i < 9; i++) tuft.push(blade((i / 9) * Math.PI * 2, (i % 3) - 1, 0.3 + (i % 4) * 0.07, 0.05 + (i % 2) * 0.05));
-    const geo = mergeGeometries(tuft, false)!;
-    geo.computeVertexNormals();
-    const N = CFG.world.grassCount;
-    const base = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
-    const matG = this.vegMaterial(base, 0.12);
-    const inst = new THREE.InstancedMesh(geo, matG, N);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const s = new THREE.Vector3();
-    const p = new THREE.Vector3();
-    const col = new THREE.Color();
-    let n = 0;
-    let tries = 0;
-    const rng = this.rng;
-    while (n < N && tries < N * 20) {
-      tries++;
-      const x = rng.range(-95, 95);
-      const z = rng.range(-35, 105);
-      const bd = boundsDistance(x, z);
-      if (bd > 6) continue;
-      const r = lakeR(x, z);
-      if (r < 1.012) continue;
-      if (pathMask(x, z) > 0.2) continue;
-      if (distToPier(x, z) < 0.8) continue;
-      if (porchHeight(x, z) > -Infinity) continue;
+    const G = CFG.grass;
+    this.grass = new GrassField((rng) => {
+      const out: Array<[number, number, number]> = [];
       const c = cabinFrame();
-      if (Math.hypot(x - c.x, z - c.z) < 4.2) continue;
-      p.set(x, this.heightmap.heightAt(x, z) - 0.02, z);
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng.range(0, Math.PI));
-      const k = rng.range(0.7, 1.5);
-      s.set(k, k * rng.range(0.7, 1.4), k);
-      m.compose(p, q, s);
-      inst.setMatrixAt(n, m);
-      col.setScalar(rng.range(0.8, 1.15));
-      inst.setColorAt(n, col);
-      n++;
-    }
-    inst.count = n;
-    inst.receiveShadow = true;
-    inst.name = 'grass';
-    this.group.add(inst);
+      const step = 1 / Math.sqrt(G.clumpsPerM2);
+      for (let z = -40; z < 108; z += step) {
+        for (let x = -96; x < 96; x += step) {
+          const px = x + rng.range(-0.5, 0.5) * step;
+          const pz = z + rng.range(-0.5, 0.5) * step;
+          const bd = boundsDistance(px, pz);
+          if (bd > 4) continue;
+          const r = lakeR(px, pz);
+          if (r < 1.01) continue;
+          // mniej trawy w lesie i na krawędzi ścieżki, brak na ścieżce, ganku, pomoście
+          if (bd > -6 && rng.next() < smoothstep(-6, 4, bd) * 0.8) continue;
+          if (pathMask(px, pz) > 0.25) continue;
+          if (distToPier(px, pz) < 0.6) continue;
+          if (porchHeight(px, pz) > -Infinity) continue;
+          if (Math.hypot(px - c.x, pz - c.z) < 4.3) continue;
+          out.push([px, this.heightmap.heightAt(px, pz) - 0.03, pz]);
+        }
+      }
+      return out;
+    }, 777);
+    this.group.add(this.grass.mesh);
+  }
+
+  /** Trawa wokół gracza (wywołać co klatkę renderu). */
+  updateGrass(player: THREE.Vector3, force = false): void {
+    const Q = CFG.quality[CFG.quality.current];
+    this.grass.update(player, Q.grassDensity, Q.grassRadius, force);
   }
 }
