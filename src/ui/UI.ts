@@ -63,7 +63,6 @@ export class UI {
   private holdFill: HTMLElement;
   private fight: HTMLElement;
   private fightEls: Record<string, HTMLElement> = {};
-  private clickPlay: HTMLElement;
   private floatCam: HTMLElement;
   private floatMarker: HTMLElement;
   readonly pause: HTMLElement;
@@ -122,10 +121,9 @@ export class UI {
     this.fightEls.tdrag = this.fight.querySelector('.tbar .drag')!;
     this.fightEls.sfill = this.fight.querySelector('.sbar .fill')!;
     this.fightEls.dot = this.fight.querySelector('.rodpad .dot')!;
-    this.clickPlay = el('div', { id: 'clickplay', class: 'panel hidden' }, 'Kliknij, aby sterować');
     this.floatCam = el('div', { id: 'floatcam', class: 'hidden' }, '<span>Spławik</span><b class="alert">BIERZE!</b>');
     this.floatMarker = el('div', { id: 'floatmarker', class: 'hidden' }, '<i></i><b>!</b>');
-    this.hud.append(this.floatMarker, this.floatCam, this.objectives, this.status, this.hint, this.messages, this.crosshair, this.power, this.hold, this.fight, this.clickPlay);
+    this.hud.append(this.floatMarker, this.floatCam, this.objectives, this.status, this.hint, this.messages, this.crosshair, this.power, this.hold, this.fight);
 
     // --- intro ---
     this.caption = el('div', { id: 'caption' }, '<div class="t"></div><div class="s"></div>');
@@ -328,10 +326,6 @@ export class UI {
     const w = Math.round(Math.min(320, window.innerWidth * 0.26));
     const h = Math.round(w * 0.62);
     return { x: 20, y: window.innerHeight - h - 20, w, h };
-  }
-
-  setClickToPlay(v: boolean): void {
-    this.clickPlay.classList.toggle('hidden', !v);
   }
 
   // ---------------- ekrany ----------------

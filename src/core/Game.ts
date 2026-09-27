@@ -57,7 +57,6 @@ export class Game {
   private startOrbit = 0;
   private debugOverlay = false;
   private catchOpen = false;
-  private hudOn = false;
   private tmp = new THREE.Vector3();
   private tmp2 = new THREE.Vector3();
   /** kamera podglądu spławika (obraz w obrazie) */
@@ -173,6 +172,8 @@ export class Game {
               this.audio.setMuted(true);
             },
             onStart: () => {
+              // klik „Graj” to gest użytkownika – od razu przechwytujemy kursor (bez „Kliknij, aby sterować”)
+              this.input.requestLock();
               if (this.fsm.is('START_SCREEN')) this.fsm.go('INTRO');
             },
             onOptions: (o) => {
@@ -305,7 +306,6 @@ export class Game {
     this.ctx.camera.updateProjectionMatrix();
     this.ctx.setLightScale(1, 1);
     this.audio.setAmbience(1);
-    this.hudOn = true;
     this.ui.setFade(0);
     this.ui.showHud(true);
     this.ui.message('Zejdź nad jezioro', 'info', 4);
@@ -545,7 +545,6 @@ export class Game {
         rodUp: f.rodUp,
       });
     } else ui.setFight(null);
-    ui.setClickToPlay(!this.input.locked && !this.input.lockFailed && !this.catchOpen && !this.debug.visible && this.hudOn && !this.camRig.blending);
   }
 
   private debugText(): string {

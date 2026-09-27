@@ -44,7 +44,6 @@ export class Input {
       this.mouseButtons.clear();
     });
     canvas.addEventListener('mousedown', (e) => {
-      if (!this.locked && !this.lockFailed) return; // pierwszy klik tylko przechwytuje kursor
       this.mouseButtons.add(e.button);
       this.mousePressed.add(e.button);
     });
@@ -53,7 +52,6 @@ export class Input {
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
-      if (!this.locked && !this.lockFailed) return;
       const dx = e.movementX;
       const dy = e.movementY;
       // odrzucenie skoków niektórych przeglądarek po zablokowaniu kursora
