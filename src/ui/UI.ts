@@ -31,8 +31,6 @@ export interface FightView {
 export class UI {
   readonly root: HTMLElement;
   private fade: HTMLElement;
-  private lbTop: HTMLElement;
-  private lbBottom: HTMLElement;
   private caption: HTMLElement;
   private skip: HTMLElement;
   private skipCircle: SVGCircleElement;
@@ -120,9 +118,7 @@ export class UI {
     this.floatMarker = el('div', { id: 'floatmarker', class: 'hidden' }, '<i></i><b>!</b>');
     this.hud.append(this.floatMarker, this.floatCam, this.objectives, this.status, this.hint, this.messages, this.prompt, this.crosshair, this.power, this.hold, this.fight, this.clickPlay);
 
-    // --- cutscenka ---
-    this.lbTop = el('div', { class: 'letterbox top' });
-    this.lbBottom = el('div', { class: 'letterbox bottom' });
+    // --- intro ---
     this.caption = el('div', { id: 'caption' }, '<div class="t"></div><div class="s"></div>');
     this.skip = el(
       'div',
@@ -139,7 +135,7 @@ export class UI {
         <div class="menu"><button class="btn" id="btnResume">Wznów</button></div>
         <div id="controls">
           <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>ruch, <kbd>Shift</kbd> bieg</span>
-          <span><kbd>E</kbd></span><span>interakcja / wyciągnij rybę</span>
+          <span><kbd>E</kbd></span><span>wyciągnij rybę (gdy zmęczona i blisko)</span>
           <span><kbd>F</kbd> (przytrzymaj)</span><span>nabij robaka</span>
           <span><kbd>LPM</kbd> (przytrzymaj)</span><span>rzut (siła) / zwijanie</span>
           <span><kbd>PPM</kbd></span><span>zacięcie (lub szybkie szarpnięcie myszą w dół)</span>
@@ -168,7 +164,7 @@ export class UI {
     this.debugText = el('div', { id: 'debugText', class: 'hidden' });
     this.fade = el('div', { id: 'fade' });
 
-    root.append(this.hud, this.lbTop, this.lbBottom, this.caption, this.skip, this.pause, this.catchScreen, this.logScreen, this.debugText, this.fade, this.loading);
+    root.append(this.hud, this.caption, this.skip, this.pause, this.catchScreen, this.logScreen, this.debugText, this.fade, this.loading);
   }
 
   hideLoading(): void {
@@ -193,13 +189,6 @@ export class UI {
       };
       step();
     });
-  }
-
-  setLetterbox(on: boolean): void {
-    this.lbTop.classList.toggle('on', on);
-    this.lbBottom.classList.toggle('on', on);
-    this.lbTop.style.height = on ? `${CFG.cutscene.letterbox * 100}vh` : '';
-    this.lbBottom.style.height = on ? `${CFG.cutscene.letterbox * 100}vh` : '';
   }
 
   setCaption(c: Caption | null, alpha: number): void {

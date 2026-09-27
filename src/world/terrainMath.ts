@@ -1,9 +1,9 @@
 /**
  * Czysta matematyka świata (bez Three.js): kształt jeziora, MAPA GŁĘBOKOŚCI, wysokość terenu,
- * trzciny, pomost, droga. Używana przez render, gracza, rybę i testy.
+ * trzciny, pomost. Używana przez render, gracza, rybę i testy.
  */
 import { CFG } from '../config';
-import { clamp, clamp01, lerp, smoothstep, DEG } from '../core/math';
+import { clamp, clamp01, smoothstep, DEG } from '../core/math';
 
 const W = () => CFG.world;
 
@@ -79,20 +79,7 @@ export function hills(x: number, z: number): number {
   );
 }
 
-// ---------- droga ----------
-/** Droga: parking nad jeziorem → dom (podjazd). Auto w cutscence jedzie tą trasą. */
-export const ROAD: ReadonlyArray<[number, number]> = [
-  [-6, 58],
-  [-6, 68],
-  [-12, 86],
-  [2, 112],
-  [-6, 140],
-  [-2, 158],
-  [-2, 176],
-  [0.5, 185],
-  [2.5, 191],
-];
-
+// ---------- łamane (ścieżka) ----------
 export function nearestOnPolyline(
   pts: ReadonlyArray<[number, number]>,
   x: number,
@@ -119,50 +106,11 @@ function baseLand(x: number, z: number): number {
   return w.bankHeight * smoothstep(1, 1.07, r) + hills(x, z) * smoothstep(1.04, 1.7, r);
 }
 
-/** Maska 0..1 wypłaszczonych miejsc: parking, dom. */
-function flattenParking(x: number, z: number): number {
-  const w = W();
-  const dx = Math.abs(x - w.parkingX) - 9;
-  const dz = Math.abs(z - w.parkingZ) - 7;
-  const d = Math.max(dx, dz, 0);
-  return 1 - smoothstep(0, 5, d);
-}
-
-export function houseGroundHeight(): number {
-  return baseLand(W().houseX, W().houseZ);
-}
-
 /** Wysokość terenu (analityczna). Pod wodą = -głębokość. */
 export function terrainHeightAnalytic(x: number, z: number): number {
   const r = lakeR(x, z);
   if (r < 1) return -lakeDepth(x, z);
-  const w = W();
-  let h = baseLand(x, z);
-  // droga
-  const n = nearestOnPolyline(ROAD, x, z);
-  if (n.dist < 7) {
-    const roadH = baseLand(n.x, n.z);
-    h = lerp(h, roadH, 1 - smoothstep(3, 7, n.dist));
-  }
-  // dom
-  const hd = Math.hypot(x - w.houseX, z - w.houseZ);
-  if (hd < 22) h = lerp(h, houseGroundHeight(), 1 - smoothstep(13, 22, hd));
-  // parking
-  const pm = flattenParking(x, z);
-  if (pm > 0) h = lerp(h, w.parkingH, pm);
-  return h;
-}
-
-export function roadMask(x: number, z: number): number {
-  const n = nearestOnPolyline(ROAD, x, z);
-  return 1 - smoothstep(2.4, 3.4, n.dist);
-}
-
-export function parkingMask(x: number, z: number): number {
-  const w = W();
-  const dx = Math.abs(x - w.parkingX) - 8;
-  const dz = Math.abs(z - w.parkingZ) - 6;
-  return 1 - smoothstep(0, 1.2, Math.max(dx, dz, 0));
+  return baseLand(x, z);
 }
 
 // ---------- pomost ----------

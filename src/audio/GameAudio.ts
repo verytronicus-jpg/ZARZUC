@@ -1,5 +1,5 @@
 /**
- * Dźwięk – w całości proceduralny (WebAudio): ambient (ptaki, woda), kroki, bagażnik, silnik,
+ * Dźwięk – w całości proceduralny (WebAudio): ambient (ptaki, woda), kroki,
  * świst rzutu, plusk, terkot hamulca, zwijanie, trzask zerwanej żyłki, chlapanie ryby.
  */
 import { CFG } from '../config';
@@ -12,7 +12,6 @@ export class GameAudio {
   private amb!: GainNode;
   private noise!: AudioBuffer;
   private reelGain: GainNode | null = null;
-  private engineGain: GainNode | null = null;
   private clickPhase = 0;
   private reelPhase = 0;
   private birdTimer = 2;
@@ -20,8 +19,6 @@ export class GameAudio {
 
   constructor() {
     events.on('step', (e) => this.step(e.surface, e.run));
-    events.on('trunk', (e) => this.trunk(e.open));
-    events.on('carDoor', () => this.thump(0.5, 80));
     events.on('castWhoosh', (e) => this.whoosh(0.35 + e.power * 0.25, 0.3 + e.power * 0.5));
     events.on('strike', () => this.whoosh(0.18, 0.5));
     events.on('splash', (e) => this.splash(e.strength));
@@ -34,7 +31,6 @@ export class GameAudio {
       this.blip(660, 0.12, 0.25);
       setTimeout(() => this.blip(990, 0.16, 0.25), 130);
     });
-    events.on('engine', (e) => this.engine(e.on));
     // branie: głuche „plum” spławika idącego pod wodę
     events.on('floatUnder', () => this.blip(300, 0.12, 0.22));
     events.on('bite', () => {
@@ -258,32 +254,6 @@ export class GameAudio {
     s.start(t, Math.random() * 1.5, 0.2);
   }
 
-  trunk(open: boolean): void {
-    const c = this.ctx;
-    if (!c) return;
-    const t = c.currentTime;
-    if (open) {
-      // skrzypnięcie zawiasu
-      const o = c.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(95, t);
-      o.frequency.linearRampToValueAtTime(150, t + 0.45);
-      const bp = c.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 900;
-      bp.Q.value = 6;
-      const g = c.createGain();
-      this.env(g, t, 0.07, 0.05, 0.45);
-      o.connect(bp).connect(g).connect(this.sfx);
-      o.start(t);
-      o.stop(t + 0.6);
-      this.click(1800, 0.2);
-    } else {
-      this.thump(0.7, 70);
-      this.click(1500, 0.25, 0.02);
-    }
-  }
-
   thump(vol: number, freq: number): void {
     const c = this.ctx;
     if (!c) return;
@@ -304,36 +274,6 @@ export class GameAudio {
     this.env(g2, t, vol * 0.3, 0.002, 0.12);
     s.connect(lp).connect(g2).connect(this.sfx);
     s.start(t, 0.3, 0.2);
-  }
-
-  engine(on: boolean): void {
-    const c = this.ctx;
-    if (!c) return;
-    if (!this.engineGain) {
-      this.engineGain = c.createGain();
-      this.engineGain.gain.value = 0;
-      const lp = c.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 260;
-      for (const [f, type] of [
-        [42, 'sawtooth'],
-        [84, 'square'],
-      ] as const) {
-        const o = c.createOscillator();
-        o.type = type;
-        o.frequency.value = f;
-        const lfo = c.createOscillator();
-        lfo.frequency.value = 0.4;
-        const lg = c.createGain();
-        lg.gain.value = f * 0.06;
-        lfo.connect(lg).connect(o.frequency);
-        o.connect(lp);
-        o.start();
-        lfo.start();
-      }
-      lp.connect(this.engineGain).connect(this.sfx);
-    }
-    this.engineGain.gain.setTargetAtTime(on ? 0.12 : 0, c.currentTime, on ? 0.4 : 0.25);
   }
 
   whoosh(dur: number, vol: number): void {

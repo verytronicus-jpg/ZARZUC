@@ -17,7 +17,6 @@ import { Player } from '../player/Player';
 import { Preparation } from '../player/Preparation';
 import { FishingController, type CaughtFish } from '../fishing/FishingController';
 import { CatchLog } from '../fishing/CatchLog';
-import { IntroCutscene } from '../cutscene/IntroCutscene';
 import { UI } from '../ui/UI';
 import { CatchPreview } from '../ui/CatchPreview';
 import { GameAudio } from '../audio/GameAudio';
@@ -26,7 +25,7 @@ import { mountStartScreen, type StartScreenHandle, type StartScreenFish } from '
 import '../ui/startscreen/startscreen.css';
 import { fmtWeight } from './math';
 
-export type GState = 'BOOT' | 'START_SCREEN' | 'CUTSCENE' | 'GAMEPLAY' | 'PAUSE';
+export type GState = 'BOOT' | 'START_SCREEN' | 'INTRO' | 'GAMEPLAY' | 'PAUSE';
 
 /** Globalna maszyna stanów gry i spinanie systemów. */
 export class Game {
@@ -47,7 +46,6 @@ export class Game {
   readonly log = new CatchLog();
   readonly preview: CatchPreview;
   readonly debug: DebugPanel;
-  cutscene: IntroCutscene | null = null;
   private startScreen: StartScreenHandle | null = null;
   private rodObj: THREE.Object3D;
   private boxObj: THREE.Object3D;
@@ -83,7 +81,7 @@ export class Game {
         const m = c as THREE.Mesh;
         if (m.isMesh) m.castShadow = true;
       });
-    this.prep = new Preparation(this.world, this.player, this.fishing, this.camRig, this.rodObj, this.boxObj);
+    this.prep = new Preparation(this.player, this.fishing, this.camRig, this.rodObj, this.boxObj);
     this.effects = new WaterEffects(this.ctx.scene, this.world);
     this.preview = new CatchPreview(this.ui.catchCanvas, this.assets);
     this.debug = new DebugPanel((path) => this.onConfigChange(path));
@@ -113,9 +111,6 @@ export class Game {
     this.fsm.setHandlers({
       BOOT: {
         enter: () => {
-          // postać i auto na parkingu (tło start screenu)
-          this.world.placeCar(CFG.world.parkingX, CFG.world.parkingZ - 1, Math.PI);
-          this.prep.stowInTrunk();
           this.player.root.visible = false;
           this.ui.hideLoading();
           queueMicrotask(() => this.fsm.go('START_SCREEN'));
@@ -131,12 +126,12 @@ export class Game {
             domain: CFG.game.domain,
             species: this.startScreenSpecies(),
             onCastStart: () => {
-              // gest użytkownika – odblokuj dźwięk gry, ale wycisz go do cutscenki
+              // gest użytkownika – odblokuj dźwięk gry, ale wycisz go do intro
               this.audio.unlock();
               this.audio.setMuted(true);
             },
             onStart: () => {
-              if (this.fsm.is('START_SCREEN')) this.fsm.go('CUTSCENE');
+              if (this.fsm.is('START_SCREEN')) this.fsm.go('INTRO');
             },
             onOptions: (o) => {
               if (o.nature !== undefined) CFG.audio.ambient = 0.45 * o.nature;
@@ -152,20 +147,19 @@ export class Game {
           this.audio.setMuted(false);
         },
       },
-      CUTSCENE: {
+      INTRO: {
         enter: () => {
-          this.ui.setLetterbox(true);
           this.ui.showHud(false);
           this.player.controlled = false;
-          this.cutscene = new IntroCutscene(this.world, this.player, this.rodObj, this.boxObj, this.ctx.camera, {
-            setFade: (a) => this.ui.setFade(a),
-            setCaption: (c, a) => this.ui.setCaption(c, a),
-          });
-          this.cutscene.onEnd = () => this.endCutscene();
           this.escHold = 0;
+          // K1: intro natychmiastowe – postać od razu na starcie z wędką i robakami
+          const W = CFG.world;
+          this.player.teleport(W.startX, W.startZ, W.startYaw);
+          this.player.root.visible = true;
+          this.prep.equip();
+          this.endIntro();
         },
         exit: () => {
-          this.ui.setLetterbox(false);
           this.ui.setSkip(false, 0);
         },
       },
@@ -232,24 +226,22 @@ export class Game {
     });
   }
 
-  private endCutscene(): void {
+  /** Koniec intro: sterowanie dla gracza, kamera 3. osoby płynnie (bez cięcia i bez teleportu postaci). */
+  private endIntro(): void {
     const p = this.player;
-    this.prep.stowInTrunk();
-    this.world.placeCar(CFG.world.parkingX, CFG.world.parkingZ - 1, Math.PI);
     p.root.visible = true;
     p.controlled = true;
-    p.anim.setPose('none');
     p.prevPos.copy(p.pos);
     this.ctx.camera.fov = CFG.camera.fov;
     this.ctx.camera.updateProjectionMatrix();
-    // kamera gracza za postacią, płynne przejście 1 s (bez cięcia, bez teleportu postaci)
     this.camRig.yaw = p.yaw;
-    this.camRig.pitch = 0.22;
+    this.camRig.pitch = CFG.intro.endPitch;
     this.camRig.mode = 'follow';
-    this.camRig.startBlend(CFG.cutscene.blendTime);
+    this.camRig.startBlend(CFG.intro.blendTime);
     this.hudOn = true;
+    this.ui.setFade(0);
     this.ui.showHud(true);
-    this.ui.message('Otwórz bagażnik auta [E]', 'info', 4);
+    this.ui.message('Zejdź nad jezioro', 'info', 4);
     this.fsm.go('GAMEPLAY');
   }
 
@@ -344,18 +336,6 @@ export class Game {
       const a = this.startOrbit + 2.2;
       cam.position.set(Math.cos(a) * 62, 11 + Math.sin(this.startOrbit * 0.7) * 2, Math.sin(a) * 50 + 8);
       cam.lookAt(0, 0.5, 5);
-    } else if (st === 'CUTSCENE' && this.cutscene) {
-      // ESC przytrzymany 1 s = pominięcie
-      if (this.input.keys.has('Escape')) this.escHold += frameDt;
-      else this.escHold = Math.max(0, this.escHold - frameDt * 2);
-      this.ui.setSkip(this.cutscene.timeline.time > 0.8, Math.min(1, this.escHold / CFG.cutscene.skipHoldTime));
-      if (this.escHold >= CFG.cutscene.skipHoldTime) {
-        this.escHold = 0;
-        this.cutscene.skip();
-      } else {
-        this.cutscene.update(scaledDt);
-      }
-      this.player.applyVisual(1);
     }
 
     if (st === 'GAMEPLAY' || st === 'PAUSE') {
@@ -369,7 +349,7 @@ export class Game {
       this.camRig.update(frameDt, look, this.player.root.position);
       f.render(alpha, rt);
       if (st === 'GAMEPLAY') this.updateHud();
-    } else if (st === 'CUTSCENE') {
+    } else if (st === 'INTRO') {
       this.input.consumeLook();
     }
 
@@ -426,7 +406,7 @@ export class Game {
 
   private shadowTarget(): THREE.Vector3 {
     if (this.fsm.is('START_SCREEN', 'BOOT')) return this.tmp.set(0, 0, 20);
-    if (this.fsm.is('CUTSCENE')) return this.tmp.copy(this.ctx.camera.position).lerp(this.player.root.position, 0.7);
+    if (this.fsm.is('INTRO')) return this.tmp.copy(this.ctx.camera.position).lerp(this.player.root.position, 0.7);
     return this.tmp.copy(this.player.root.position);
   }
 
@@ -435,15 +415,10 @@ export class Game {
     const f = this.fishing;
     const prep = this.prep;
     const t = this.loop.simTime;
-    const objVisible = prep.allDoneTime < 0 || t - prep.allDoneTime < 4;
-    ui.setObjectives(prep.objectives, objVisible);
+    ui.setObjectives(prep.objectives, prep.objectivesVisible(t));
     ui.setStatus(f.gear.baitOn, f.dragKgf, f.L, f.gear.rodInHand);
     let hint = '';
-    if (!f.gear.rodInHand) {
-      const cur = prep.currentObjective;
-      hint = cur ? `${cur.text}` : '';
-      if (cur?.id === 'trunk' && !prep.interaction.current) hint = 'Podejdź do tyłu auta';
-    } else if (prep.baitProgress === null) hint = f.hint;
+    if (prep.baitProgress === null) hint = f.hint;
     ui.setHint(hint.replace(/\[(.+?)\]/g, '<kbd>$1</kbd>'));
 
     // podpowiedź nad obiektem

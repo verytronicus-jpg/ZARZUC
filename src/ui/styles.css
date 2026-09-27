@@ -21,16 +21,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
 #ui .interactive { pointer-events: auto; }
 .hidden { display: none !important; }
 
-/* ---------- fade / letterbox / napisy ---------- */
+/* ---------- fade / napisy / pominięcie intro ---------- */
 #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-.letterbox { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.9s ease; }
-.letterbox.top { top: 0; }
-.letterbox.bottom { bottom: 0; }
-.letterbox.on { height: 11vh; }
 #caption { position: absolute; left: 0; right: 0; bottom: 21vh; text-align: center; opacity: 0; text-shadow: 0 2px 18px rgba(0,0,0,0.7); }
 #caption .t { font-family: var(--display); font-size: clamp(28px, 4.2vw, 56px); letter-spacing: 0.02em; }
 #caption .s { font-size: clamp(13px, 1.3vw, 17px); letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-dim); margin-top: 6px; }
-#skip { position: absolute; right: 28px; bottom: calc(11vh + 18px); display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-dim); opacity: 0; transition: opacity 0.5s; }
+#skip { position: absolute; right: 28px; bottom: 28px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-dim); opacity: 0; transition: opacity 0.5s; }
 #skip.on { opacity: 1; }
 #skip svg { width: 30px; height: 30px; transform: rotate(-90deg); }
 #skip circle { fill: none; stroke-width: 3; }

@@ -147,16 +147,15 @@ export const CFG = {
     boundsRz: 78,
     /** gracz nie wejdzie do wody głębszej niż to */
     maxWadeDepth: 0.25,
-    parkingX: -6,
-    parkingZ: 60,
-    parkingH: 0.75,
     pierAngleDeg: 80,
     pierLengthWater: 12,
     pierLengthLand: 3,
     pierWidth: 2.2,
     pierDeckHeight: 0.45,
-    houseX: 5,
-    houseZ: 184,
+    /** start gracza (K1: przy nasadzie pomostu), yaw 0 = +Z */
+    startX: 10.3,
+    startZ: 44.5,
+    startYaw: Math.PI,
   },
 
   water: {
@@ -221,7 +220,8 @@ export const CFG = {
 
   prep: {
     baitHoldTime: 1.5,
-    trunkOpenTime: 0.8,
+    /** jak długo lista celów zostaje na ekranie po wykonaniu wszystkich [s] */
+    objectivesLinger: 4,
   },
 
   cast: {
@@ -419,10 +419,14 @@ export const CFG = {
     messageTime: 2.6,
   },
 
-  cutscene: {
-    blendTime: 1.0,
+  /** intro „otwierane drzwi” (stan INTRO globalnej FSM) */
+  intro: {
+    /** czas płynnego przejścia kamery do widoku 3. osoby [s] */
+    blendTime: 1.2,
+    /** przytrzymanie Esc do pominięcia [s] */
     skipHoldTime: 1.0,
-    letterbox: 0.11,
+    /** pitch kamery gracza po intro [rad] */
+    endPitch: 0.22,
   },
 
   audio: {

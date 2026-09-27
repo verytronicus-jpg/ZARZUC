@@ -8,7 +8,7 @@ siedzi w jednym pliku: [`src/config.ts`](src/config.ts).
 
 Jednostki: metry, kilogramy, sekundy, niutony. Oś Y w górę.
 
-> **Stan:** MVP v0.2 (koncept: garaż → auto → parking nad jeziorem).
+> **Stan:** przebudowa v2 w toku (stary koncept garaż → auto → parking usunięty).
 > **Trwa przebudowa v2 „Chatka nad jeziorem”** – specyfikacja: [`docs/ZADANIE-v2-chatka.md`](docs/ZADANIE-v2-chatka.md).
 
 ## Dokumentacja
@@ -28,7 +28,7 @@ Jednostki: metry, kilogramy, sekundy, niutony. Oś Y w górę.
 
 2D-scena na canvasie (pomost, wędkarz, pory dnia, deski-przyciski) w `src/ui/startscreen/`
 (`startscreen.js` + style ograniczone do `#startscreen`). „Zacznij łowić” → animacja zarzucenia → pasek
-ładowania → cutscenka. Nazwa gry i hasło są w `CFG.game` (`src/config.ts`) — zmiana tam podmienia napis
+ładowania → intro. Nazwa gry i hasło są w `CFG.game` (`src/config.ts`) — zmiana tam podmienia napis
 z animowanymi literami, ekran ładowania i tytuł karty. „Kolekcja ryb” odkrywa gatunki z dziennika połowów.
 Opcje „Odgłosy natury”, „Efekty dźwiękowe” i „Jakość grafiki” działają też w grze; „Pora dnia” i „Muzyka”
 dotyczą na razie tylko menu (pora dnia jest poza zakresem MVP).
@@ -57,19 +57,19 @@ Wymagana przeglądarka z WebGL 2.
 |---|---|
 | **WASD**, **Shift** | ruch, bieg |
 | **Mysz** | kamera (kliknij w obraz, aby przechwycić kursor; gdy przeglądarka/ramka blokuje pointer lock, gra przechodzi w tryb wolnego kursora) |
-| **E** | interakcja (bagażnik, wędka, robaki) · wyciągnięcie ryby |
+| **E** | wyciągnięcie ryby (gdy zmęczona i blisko) |
 | **F** (przytrzymaj 1,5 s) | nabicie robaka |
 | **LPM** (przytrzymaj) | rzut — pasek siły waha się 0→100%→0 · w wodzie: zwijanie (pusty zestaw ~3 m/s, w holu 0,8 m/s) |
 | **PPM** | zacięcie (albo szybkie szarpnięcie myszą w dół) |
 | **Kółko** | hamulec kołowrotka 0,5–6 kgf co 0,25 |
 | **Mysz w holu** | kąt wędki: lewo/prawo i w górę |
 | **Tab** | dziennik połowów i rekordy |
-| **Esc** | pauza · w cutscence: przytrzymaj 1 s, aby pominąć |
+| **Esc** | pauza · w intro: przytrzymaj 1 s, aby pominąć |
 | **F1** | debug: nakładka + panel lil-gui; wtedy **B** wymusza branie, **1/2/3** = tempo ×0,25/×1/×4 |
 
 ## Jak się łowi (skrót)
 
-1. Otwórz bagażnik, weź wędkę i robaki, nabij robaka (lista celów w lewym górnym rogu prowadzi krok po kroku).
+1. Zejdź nad jezioro (wędka jest w ręce, robaki w kieszeni), nabij robaka – lista celów w lewym górnym rogu prowadzi krok po kroku.
 2. Wejdź na pomost albo stań nad brzegiem, patrz na wodę, przytrzymaj LPM i puść przy właściwej sile.
 3. Obserwuj spławik (podgląd w lewym dolnym rogu). Każdy gatunek bierze inaczej:
    * **płoć** – 2–4 drobne podskoki, potem szybkie zanurzenie pod kątem (okno 0,5 s),
@@ -99,13 +99,13 @@ src/
                    CameraRig (orbita + ramię sprężynowe z kolizją, kamera holu), WaterEffects (plusk, kręgi)
   world/           terrainMath (kształt jeziora, MAPA GŁĘBOKOŚCI, teren, droga, pomost), Heightmap,
                    waves (Gerstner – wspólny dla CPU i GPU), Water (shader), World (instancje drzew/trzcin/trawy)
-  assets/          AssetRegistry (fabryki + loadGLB), procedural/* (postać, auto, wędka, spławik, ryby…)
+  assets/          AssetRegistry (fabryki + loadGLB), procedural/* (postać, wędka, spławik, ryby…)
   player/          Player (kontroler), CharacterAnimator (proceduralny chód i pozy), collision,
-                   Interaction (zasięg 2 m + stożek), Preparation (cele tutorialu, bagażnik, nabijanie)
+                   Interaction (zasięg 2 m + stożek), Preparation (cele tutorialu, ekwipunek startowy, nabijanie)
   fishing/         FishingController (FSM łowienia), cast, Bobber, VerletLine, RodController,
                    tension (skalarny model napięcia), FightFish, bitePatterns, strike (Poisson + okna),
                    species, CatchLog
-  cutscene/        Timeline (dane: ujęcia CatmullRom, akcje, napisy, fade), introScript, IntroCutscene
+  cutscene/        Timeline (dane: ujęcia CatmullRom, akcje, napisy, fade)
   ui/              UI (nakładka HTML/CSS), CatchPreview, styles.css
   audio/           GameAudio (proceduralny WebAudio)
   debug/           DebugPanel (lil-gui z każdym parametrem configu)
@@ -116,7 +116,7 @@ tests/             Vitest: gatunki, napięcie/hamulec/zerwanie, okna zacięcia/P
 `alpha` i interpoluje pozycje postaci, spławika i ryby. Czas fal w shaderze to ten sam (interpolowany) czas
 symulacji, więc woda na GPU i wyporność na CPU są zgodne.
 
-**Globalna maszyna stanów**: `BOOT → START_SCREEN → CUTSCENE → GAMEPLAY ⇄ PAUSE` (`core/Game.ts`).
+**Globalna maszyna stanów**: `BOOT → START_SCREEN → INTRO → GAMEPLAY ⇄ PAUSE` (`core/Game.ts`).
 
 **Maszyna stanów łowienia** (`fishing/FishingController.ts`):
 `IDLE → AIMING → CHARGING → CASTING → SETTLING → WAITING → NIBBLE → BITE → FIGHT → LANDING → CAUGHT → IDLE`,
@@ -150,7 +150,7 @@ Każdy model powstaje przez `AssetRegistry` (`src/assets/AssetRegistry.ts`) — 
 
 ```ts
 const r = createDefaultRegistry();
-await r.loadGLB('car', 'models/car.glb');          // pliki GLB wrzuć do public/models/
+await r.loadGLB('rod', 'models/rod.glb');          // pliki GLB wrzuć do public/models/
 await r.loadGLB('character', 'models/angler.glb');
 ```
 
@@ -162,10 +162,8 @@ jeśli GLB je zawiera:
 |---|---|
 | postać | `hips`, `spine`, `neck`, `head`, `upperarm_L/R`, `forearm_L/R`, **`hand_L`**, **`hand_R`**, `thigh_L/R`, `shin_L/R`, `foot_L/R` |
 | wędka | `rod_seg_0` … `rod_seg_5` (łańcuch szczytówki), **`rod_tip`**, **`reel`**, `reel_handle` |
-| auto | `chassis`, **`trunk_lid`** (zawias klapy), `trunk_slot_rod`, `trunk_slot_box`, `door_L`, `wheel_FL/FR/RL/RR` |
 | spławik | `float_top` (origin = dół korpusu, oś +Y) |
 | ryba | **`mouth`**, siatka `fish_body` (materiał z `fishMaterial()` daje falowanie i zanik pod wodą) |
-| stojak | `rack_slot`, `shelf_slot` |
 
 Konwencje: 1 jednostka = 1 m; origin postaci między stopami; przód modelu = **+Z w three.js** (w Blenderze
 model patrzy w **−Y**, eksport glTF z „+Y Up”); ryba ma długość 1 (skalowana do rozmiaru), pysk na +Z;

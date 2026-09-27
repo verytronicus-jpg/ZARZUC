@@ -4,7 +4,6 @@ export interface GameEvents {
   ripple: { x: number; z: number; strength: number };
   castWhoosh: { power: number };
   step: { surface: 'grass' | 'wood' | 'gravel'; run: boolean };
-  trunk: { open: boolean };
   pickup: { what: string };
   baitOn: Record<string, never>;
   lineSnap: Record<string, never>;
@@ -12,8 +11,6 @@ export interface GameEvents {
   strike: Record<string, never>;
   caught: Record<string, never>;
   uiClick: Record<string, never>;
-  carDoor: Record<string, never>;
-  engine: { on: boolean };
   reelClick: Record<string, never>;
   bite: Record<string, never>;
   floatUnder: { x: number; z: number };

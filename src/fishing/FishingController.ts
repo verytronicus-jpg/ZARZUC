@@ -651,7 +651,7 @@ export class FishingController {
         this.player.faceYaw = null;
         if (this.gear.baitOn && this.canCastHere) this.fsm.go('AIMING');
         else if (lmbPressed) {
-          if (!this.gear.baitOn) this.msg(this.gear.hasWorms ? 'Najpierw nabij przynętę [F]' : 'Najpierw nabij przynętę – weź robaki z bagażnika', 'warn');
+          if (!this.gear.baitOn) this.msg(this.gear.hasWorms ? 'Najpierw nabij przynętę [F]' : 'Najpierw nabij przynętę – brak robaków', 'warn');
           else this.msg(this.castBlockReason || 'Nie można tu zarzucić', 'warn');
         }
         break;

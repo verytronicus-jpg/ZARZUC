@@ -11,13 +11,8 @@ import {
   lakeDepth,
   lakeTheta,
   reedArcMask,
-  roadMask,
-  parkingMask,
   pierRect,
   distToPier,
-  nearestOnPolyline,
-  ROAD,
-  houseGroundHeight,
   terrainHeightAnalytic,
 } from './terrainMath';
 import type { Collider } from '../player/collision';
@@ -39,7 +34,7 @@ function colorGeo(geo: THREE.BufferGeometry, hex: number | ((y: number) => THREE
   return g;
 }
 
-/** Świat: teren z heightmapą, jezioro (mapa głębokości + woda Gerstnera), pomost, roślinność, parking, dom. */
+/** Świat: teren z heightmapą, jezioro (mapa głębokości + woda Gerstnera), pomost, roślinność. */
 export class World {
   readonly heightmap: Heightmap;
   readonly water: Water;
@@ -47,10 +42,6 @@ export class World {
   readonly reedPoints: Array<{ x: number; z: number }> = [];
   readonly group = new THREE.Group();
   private swayMaterials: THREE.Material[] = [];
-  car!: THREE.Object3D;
-  carCollider!: Extract<Collider, { kind: 'box' }>;
-  house!: THREE.Object3D;
-  rodRack!: THREE.Object3D;
   time = 0;
 
   constructor(
@@ -68,8 +59,6 @@ export class World {
     this.buildTrees();
     this.buildRocks();
     this.buildGrass();
-    this.buildHouseArea();
-    this.buildParking();
     ctx.scene.add(this.group);
   }
 
@@ -139,8 +128,6 @@ export class World {
     const sand = new THREE.Color(0x9c8a64);
     const mud = new THREE.Color(0x4a4232);
     const deep = new THREE.Color(0x2c3a30);
-    const road = new THREE.Color(0x6a6152);
-    const gravel = new THREE.Color(0x857d6e);
     const c = new THREE.Color();
     for (let j = 0; j < nz; j++) {
       for (let i = 0; i < nx; i++) {
@@ -160,8 +147,6 @@ export class World {
         } else {
           c.copy(grassA).lerp(grassB, n).lerp(grassDry, smoothstep(0.55, 1, n2) * 0.35);
           c.lerp(sand, 1 - smoothstep(1.0, 1.045, r));
-          c.lerp(road, roadMask(x, z) * 0.95);
-          c.lerp(gravel, parkingMask(x, z));
           // zacieniona trawa w obniżeniach
           c.multiplyScalar(0.92 + 0.08 * n2);
         }
@@ -321,11 +306,7 @@ export class World {
   private treeAllowed(x: number, z: number, minR: number): boolean {
     const r = lakeR(x, z);
     if (r < minR) return false;
-    if (nearestOnPolyline(ROAD, x, z).dist < 6) return false;
-    if (parkingMask(x, z) > 0.01) return false;
-    if (Math.abs(x - CFG.world.parkingX) < 14 && Math.abs(z - CFG.world.parkingZ) < 11) return false;
     if (distToPier(x, z) < 9) return false;
-    if (Math.hypot(x - CFG.world.houseX, z - CFG.world.houseZ) < 18) return false;
     return true;
   }
 
@@ -479,7 +460,6 @@ export class World {
       const x = Math.cos(ang) * CFG.world.lakeRx * rr;
       const z = Math.sin(ang) * CFG.world.lakeRz * rr;
       if (lakeR(x, z) < 1.015) continue;
-      if (roadMask(x, z) > 0.1 || parkingMask(x, z) > 0.1) continue;
       if (distToPier(x, z) < 1.2) continue;
       p.set(x, this.heightmap.heightAt(x, z) - 0.02, z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng.range(0, Math.PI));
@@ -491,61 +471,5 @@ export class World {
     inst.count = n;
     inst.receiveShadow = true;
     this.group.add(inst);
-  }
-
-  private buildHouseArea(): void {
-    const w = CFG.world;
-    const hy = houseGroundHeight();
-    this.house = this.assets.create('house');
-    this.house.position.set(w.houseX + 4, hy, w.houseZ - 2);
-    this.house.rotation.y = 0;
-    this.group.add(this.house);
-    this.colliders.push({ kind: 'box', x: w.houseX + 3.1, z: w.houseZ - 2, hx: 6.2, hz: 3.7, angle: 0 });
-    this.rodRack = this.assets.create('rodRack');
-    // stojak przy ścianie garażu, frontem do podjazdu
-    this.rodRack.position.set(w.houseX + 2, hy, w.houseZ + 1.9);
-    this.rodRack.rotation.y = 0;
-    this.group.add(this.rodRack);
-    // auto (startuje na podjeździe – cutscenka przewiezie je na parking)
-    this.car = this.assets.create('car');
-    this.group.add(this.car);
-    this.carCollider = { kind: 'box', x: 0, z: 0, hx: 0.95, hz: 2.2, angle: 0 };
-    this.colliders.push(this.carCollider);
-    this.placeCar(w.parkingX, w.parkingZ - 1, Math.PI);
-  }
-
-  placeCar(x: number, z: number, yaw: number): void {
-    this.car.position.set(x, this.terrainAt(x, z), z);
-    this.car.rotation.y = yaw;
-    this.carCollider.x = x;
-    this.carCollider.z = z;
-    this.carCollider.angle = yaw;
-  }
-
-  private buildParking(): void {
-    // krawężniki / belki parkingowe
-    const parts: THREE.BufferGeometry[] = [];
-    const w = CFG.world;
-    for (let i = 0; i < 4; i++) {
-      const b = new THREE.BoxGeometry(1.6, 0.15, 0.25);
-      const x = w.parkingX - 5 + i * 3.4;
-      const z = w.parkingZ - 5.5;
-      b.translate(x, w.parkingH + 0.07, z);
-      parts.push(colorGeo(b, 0x7a6a50));
-    }
-    // tablica "Łowisko"
-    const post = new THREE.BoxGeometry(0.1, 1.8, 0.1);
-    post.translate(w.parkingX + 7.5, w.parkingH + 0.9, w.parkingZ - 4.5);
-    parts.push(colorGeo(post, 0x5a4430));
-    const board = new THREE.BoxGeometry(1.2, 0.7, 0.05);
-    board.translate(w.parkingX + 7.5, w.parkingH + 1.8, w.parkingZ - 4.5);
-    parts.push(colorGeo(board, 0x3d5a36));
-    const geo = mergeGeometries(parts, false)!;
-    geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
-    m.castShadow = true;
-    m.receiveShadow = true;
-    this.group.add(m);
-    this.colliders.push({ kind: 'circle', x: w.parkingX + 7.5, z: w.parkingZ - 4.5, r: 0.12 });
   }
 }

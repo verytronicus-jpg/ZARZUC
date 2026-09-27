@@ -13,8 +13,7 @@ export type UpperPose =
   | 'aim'
   | 'charge'
   | 'castFwd'
-  | 'fight'
-  | 'openTrunk';
+  | 'fight';
 
 type Rot = [number, number, number];
 interface PoseDef {
@@ -29,7 +28,6 @@ interface PoseDef {
 const POSES: Record<Exclude<UpperPose, 'none'>, PoseDef> = {
   holdRod: { upperarm_R: [-0.5, 0, 0.15], forearm_R: [-0.95, 0, 0] },
   reach: { upperarm_R: [-1.45, 0, 0.1], forearm_R: [-0.15, 0, 0], upperarm_L: [-0.3, 0, 0], spine: [0.22, 0, 0] },
-  openTrunk: { upperarm_R: [-2.3, 0, 0.1], forearm_R: [-0.3, 0, 0], upperarm_L: [-0.4, 0, -0.1], spine: [0.05, 0, 0] },
   lift: { upperarm_R: [-1.1, 0, 0.25], forearm_R: [-0.9, 0, 0], upperarm_L: [-1.1, 0, -0.25], forearm_L: [-0.9, 0, 0], spine: [0.1, 0, 0] },
   carry: { upperarm_R: [-0.45, 0, 0.1], forearm_R: [-1.05, 0, 0], upperarm_L: [-0.5, 0, -0.12], forearm_L: [-1.3, 0, 0] },
   bait: { upperarm_R: [-0.9, 0, 0.5], forearm_R: [-1.4, 0, 0], upperarm_L: [-0.85, 0, -0.5], forearm_L: [-1.4, 0, 0], head: [0.5, 0, 0], spine: [0.12, 0, 0] },

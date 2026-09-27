@@ -5,20 +5,17 @@ import type { SpeciesId } from '../config';
 
 /**
  * AssetRegistry – każdy model powstaje przez fabrykę z jednym interfejsem.
- * Dziś fabryki są proceduralne; później wystarczy `registry.loadGLB('car', 'models/car.glb')`
+ * Dziś fabryki są proceduralne; później wystarczy `registry.loadGLB('character', 'models/character.glb')`
  * i reszta gry nie zauważy różnicy – pod warunkiem, że GLB zawiera pivoty o nazwach z PIVOTS.
  */
 export type AssetKind =
   | 'character'
-  | 'car'
   | 'rod'
   | 'float'
   | 'fish'
   | 'wormBox'
   | 'worm'
-  | 'hook'
-  | 'rodRack'
-  | 'house';
+  | 'hook';
 
 export interface AssetOptions {
   species?: SpeciesId;
@@ -54,18 +51,9 @@ export const PIVOTS = {
   reel: 'reel',
   reelHandle: 'reel_handle',
   rodSegment: (i: number) => `rod_seg_${i}`,
-  // auto
-  chassis: 'chassis',
-  trunkLid: 'trunk_lid',
-  trunkSlotRod: 'trunk_slot_rod',
-  trunkSlotBox: 'trunk_slot_box',
-  doorL: 'door_L',
-  wheel: (id: 'FL' | 'FR' | 'RL' | 'RR') => `wheel_${id}`,
-  // spławik / ryba / stojak
+  // spławik / ryba
   floatTop: 'float_top',
   mouth: 'mouth',
-  rackSlot: 'rack_slot',
-  shelfSlot: 'shelf_slot',
 } as const;
 
 export function pivot(root: THREE.Object3D, name: string): THREE.Object3D {
