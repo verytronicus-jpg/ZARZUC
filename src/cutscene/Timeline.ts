@@ -12,9 +12,9 @@ export interface Shot {
   duration: number;
   /** punkty ścieżki kamery (CatmullRom) */
   cam: V3[];
-  /** punkt(y) patrzenia – ścieżka lub nazwa celu dynamicznego (np. 'car', 'actor') */
+  /** punkt(y) patrzenia – ścieżka lub nazwa celu dynamicznego (np. 'cabin', 'actor') */
   look: V3[] | string;
-  /** przestrzeń punktów kamery: świat lub lokalna przestrzeń celu (np. auto) */
+  /** przestrzeń punktów kamery i patrzenia: świat lub lokalna przestrzeń celu (np. chatka) */
   space?: 'world' | string;
   lookOffset?: V3;
   fadeIn?: number;
@@ -63,6 +63,8 @@ export class Timeline {
   private finished = new Set<TimelineEvent>();
   private curves = new Map<Shot, { cam: THREE.CatmullRomCurve3; look: THREE.CatmullRomCurve3 | null }>();
   done = false;
+  /** false → Timeline nie steruje już kamerą (np. po przekazaniu jej graczowi) */
+  cameraEnabled = true;
 
   constructor(
     readonly data: TimelineData,
@@ -97,7 +99,7 @@ export class Timeline {
         if (p >= 1) this.finished.add(e);
       }
     }
-    this.applyCamera();
+    if (this.cameraEnabled) this.applyCamera();
     // napisy
     let cap: Caption | null = null;
     let ca = 0;
@@ -129,6 +131,14 @@ export class Timeline {
     this.done = true;
   }
 
+  /** Ustawia kamerę tak, jak w chwili t (bez odpalania akcji) – np. pominięcie do stanu końcowego ujęć. */
+  poseCameraAt(t: number): void {
+    const keep = this.time;
+    this.time = t;
+    this.applyCamera();
+    this.time = keep;
+  }
+
   private applyCamera(): void {
     const s = this.activeShot;
     if (!s) return;
@@ -139,8 +149,10 @@ export class Timeline {
     const space = s.space && s.space !== 'world' ? this.host.target(s.space) : null;
     if (space) pos.applyMatrix4(space.matrixWorld);
     let look: THREE.Vector3;
-    if (c.look) look = c.look.getPoint(u);
-    else {
+    if (c.look) {
+      look = c.look.getPoint(u);
+      if (space) look.applyMatrix4(space.matrixWorld);
+    } else {
       const o = this.host.target(s.look as string);
       look = o ? o.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3();
     }

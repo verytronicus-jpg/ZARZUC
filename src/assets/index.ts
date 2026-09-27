@@ -4,6 +4,8 @@ import { CharacterFactory } from './procedural/character';
 import { RodFactory, FloatFactory, HookFactory, WormFactory, WormBoxFactory } from './procedural/tackle';
 import { FishFactory } from './procedural/fish';
 import { CabinFactory, BoatFactory } from './procedural/cabin';
+import { CabinInteriorFactory } from './procedural/interior';
+import { PovHandFactory } from './procedural/povHand';
 import {
   SpruceFactory,
   FarTreeFactory,
@@ -37,6 +39,8 @@ export function createDefaultRegistry(): AssetRegistry {
   r.register('fish', new FishFactory());
   // świat (chatka/łódka: części scalone w fabryce; roślinność: jedna siatka → InstancedMesh)
   r.register('cabin', new CabinFactory());
+  r.register('cabinInterior', new CabinInteriorFactory());
+  r.register('povHand', new PovHandFactory());
   r.register('boat', new BoatFactory());
   r.register('spruceNear', new SpruceFactory('near'));
   r.register('spruceMid', new SpruceFactory('mid'));

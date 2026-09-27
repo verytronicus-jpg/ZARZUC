@@ -1,5 +1,5 @@
 /**
- * Dźwięk – w całości proceduralny (WebAudio): ambient (ptaki, woda), kroki,
+ * Dźwięk – w całości proceduralny (WebAudio): ambient (ptaki, woda), kroki, zasuwa i skrzypienie drzwi chatki,
  * świst rzutu, plusk, terkot hamulca, zwijanie, trzask zerwanej żyłki, chlapanie ryby.
  */
 import { CFG } from '../config';
@@ -19,6 +19,8 @@ export class GameAudio {
 
   constructor() {
     events.on('step', (e) => this.step(e.surface, e.run));
+    events.on('doorLatch', () => this.latch());
+    events.on('doorCreak', () => this.creak());
     events.on('castWhoosh', (e) => this.whoosh(0.35 + e.power * 0.25, 0.3 + e.power * 0.5));
     events.on('strike', () => this.whoosh(0.18, 0.5));
     events.on('splash', (e) => this.splash(e.strength));
@@ -60,7 +62,7 @@ export class GameAudio {
     this.sfx.gain.value = CFG.audio.sfx;
     this.sfx.connect(this.master);
     this.amb = c.createGain();
-    this.amb.gain.value = CFG.audio.ambient;
+    this.amb.gain.value = CFG.audio.ambient * this.ambience;
     this.amb.connect(this.master);
     // bufor szumu
     this.noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
@@ -73,8 +75,15 @@ export class GameAudio {
   applyVolumes(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.amb.gain.setTargetAtTime(CFG.audio.ambient, t, 0.1);
+    this.amb.gain.setTargetAtTime(CFG.audio.ambient * this.ambience, t, 0.1);
     this.sfx.gain.setTargetAtTime(CFG.audio.sfx, t, 0.1);
+  }
+
+  /** Poziom natury (ptaki, woda) 0..1 – w chatce ciszej, po otwarciu drzwi narasta. */
+  private ambience = 1;
+  setAmbience(level: number): void {
+    this.ambience = level;
+    if (this.ctx) this.amb.gain.setTargetAtTime(CFG.audio.ambient * level, this.ctx.currentTime, 0.15);
   }
 
   setMuted(m: boolean): void {
@@ -252,6 +261,62 @@ export class GameAudio {
     }
     s.connect(f).connect(g).connect(this.sfx);
     s.start(t, Math.random() * 1.5, 0.2);
+  }
+
+  /** Metaliczny klik zasuwy: krótki szum pasmowy + dwa „klaki”. */
+  latch(): void {
+    const c = this.ctx;
+    if (!c) return;
+    this.click(2600, 0.35);
+    this.click(1700, 0.3, 0.07);
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'square';
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(420, t + 0.05);
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1500;
+    bp.Q.value = 5;
+    const g = c.createGain();
+    this.env(g, t, 0.08, 0.002, 0.06);
+    o.connect(bp).connect(g).connect(this.sfx);
+    o.start(t);
+    o.stop(t + 0.1);
+  }
+
+  /** Skrzypienie zawiasu: piłokształtny ton z wolno falującą wysokością przez filtr pasmowy. */
+  creak(): void {
+    const c = this.ctx;
+    if (!c) return;
+    const t = c.currentTime;
+    const dur = CFG.intro.doorOpenEnd - CFG.intro.doorOpenStart;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.linearRampToValueAtTime(115, t + dur * 0.35);
+    o.frequency.linearRampToValueAtTime(88, t + dur * 0.6);
+    o.frequency.linearRampToValueAtTime(130, t + dur * 0.9);
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 23;
+    const lg = c.createGain();
+    lg.gain.value = 9;
+    lfo.connect(lg).connect(o.frequency);
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(700, t);
+    bp.frequency.linearRampToValueAtTime(1300, t + dur);
+    bp.Q.value = 7;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.12);
+    g.gain.setValueAtTime(0.09, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(bp).connect(g).connect(this.sfx);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + dur + 0.05);
+    lfo.stop(t + dur + 0.05);
   }
 
   thump(vol: number, freq: number): void {

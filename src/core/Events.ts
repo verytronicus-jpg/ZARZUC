@@ -15,6 +15,8 @@ export interface GameEvents {
   bite: Record<string, never>;
   floatUnder: { x: number; z: number };
   nibbleTap: Record<string, never>;
+  doorLatch: Record<string, never>;
+  doorCreak: Record<string, never>;
 }
 
 type Handler<T> = (payload: T) => void;

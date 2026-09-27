@@ -13,6 +13,7 @@ import { createDefaultRegistry } from '../assets';
 import type { AssetRegistry } from '../assets/AssetRegistry';
 import { World } from '../world/World';
 import { resetWorldCaches, porchStart } from '../world/terrainMath';
+import { DoorIntro } from '../cutscene/DoorIntro';
 import * as terrainMath from '../world/terrainMath';
 import { Player } from '../player/Player';
 import { Preparation } from '../player/Preparation';
@@ -47,6 +48,7 @@ export class Game {
   readonly log = new CatchLog();
   readonly preview: CatchPreview;
   readonly debug: DebugPanel;
+  intro: DoorIntro | null = null;
   private startScreen: StartScreenHandle | null = null;
   private rodObj: THREE.Object3D;
   private boxObj: THREE.Object3D;
@@ -156,12 +158,20 @@ export class Game {
           this.ui.showHud(false);
           this.player.controlled = false;
           this.escHold = 0;
-          // intro natychmiastowe (K3 doda drzwi) – postać na ganku z wędką i robakami
+          // postać (niewidoczna w POV) od razu w ekwipunku: wędka w dłoni, robaki w kieszeni
           const st = porchStart();
           this.player.teleport(st.x, st.z, st.yaw);
-          this.player.root.visible = true;
           this.prep.equip();
-          this.endIntro();
+          this.camRig.mode = 'external';
+          this.intro?.dispose();
+          this.intro = new DoorIntro(this.world, this.player, this.assets, this.ctx.camera, {
+            setFade: (a) => this.ui.setFade(a),
+            setCaption: (c, a) => this.ui.setCaption(c, a),
+            setLighting: (amb, exp) => this.ctx.setLightScale(amb, exp),
+            setAmbience: (l) => this.audio.setAmbience(l),
+            handoff: () => this.introHandoff(),
+            end: () => this.endIntro(),
+          });
         },
         exit: () => {
           this.ui.setSkip(false, 0);
@@ -230,7 +240,26 @@ export class Game {
     });
   }
 
-  /** Koniec intro: sterowanie dla gracza, kamera 3. osoby płynnie (bez cięcia i bez teleportu postaci). */
+  /**
+   * Intro → kamera 3. osoby: postać pojawia się tam, gdzie stał widz (kamera POV), a kamera płynnie odjeżdża
+   * za jej plecy (bez cięcia i bez teleportu).
+   */
+  private introHandoff(): void {
+    const p = this.player;
+    const cam = this.ctx.camera;
+    const yaw = Math.atan2(-cam.matrixWorld.elements[8], -cam.matrixWorld.elements[10]);
+    p.teleport(cam.position.x, cam.position.z, yaw);
+    // postać pojawia się, zanim wejdzie w kadr (gdy kamera odjedzie od głowy) – patrz render()
+    p.root.visible = false;
+    p.anim.setPose('holdRod');
+    this.player.applySim();
+    this.camRig.yaw = p.yaw;
+    this.camRig.pitch = CFG.intro.endPitch;
+    this.camRig.mode = 'follow';
+    this.camRig.startBlend(CFG.intro.blendTime);
+  }
+
+  /** Koniec intro: HUD i sterowanie dla gracza. */
   private endIntro(): void {
     const p = this.player;
     p.root.visible = true;
@@ -238,10 +267,8 @@ export class Game {
     p.prevPos.copy(p.pos);
     this.ctx.camera.fov = CFG.camera.fov;
     this.ctx.camera.updateProjectionMatrix();
-    this.camRig.yaw = p.yaw;
-    this.camRig.pitch = CFG.intro.endPitch;
-    this.camRig.mode = 'follow';
-    this.camRig.startBlend(CFG.intro.blendTime);
+    this.ctx.setLightScale(1, 1);
+    this.audio.setAmbience(1);
     this.hudOn = true;
     this.ui.setFade(0);
     this.ui.showHud(true);
@@ -294,6 +321,13 @@ export class Game {
     if (st === 'PAUSE' || st === 'BOOT') return;
     this.world.update(dt);
     this.fsm.update(dt);
+    if (st === 'INTRO' && this.intro?.handedOff) {
+      // po przekazaniu kamery: postać oddycha i trzyma wędkę, sterowanie wraca wraz z HUD
+      this.input.enabled = false;
+      this.player.update(dt, null, this.camRig.yaw);
+      this.fishing.update(dt, this.camRig.yaw);
+      this.input.enabled = true;
+    }
     if (st !== 'GAMEPLAY') return;
 
     const inp = this.input;
@@ -353,8 +387,26 @@ export class Game {
       this.camRig.update(frameDt, look, this.player.root.position);
       f.render(alpha, rt);
       if (st === 'GAMEPLAY') this.updateHud();
-    } else if (st === 'INTRO') {
+    } else if (st === 'INTRO' && this.intro) {
       this.input.consumeLook();
+      // Esc przytrzymany = pominięcie (od razu stan końcowy)
+      if (this.input.keys.has('Escape')) this.escHold += frameDt;
+      else this.escHold = Math.max(0, this.escHold - frameDt * 2);
+      this.ui.setSkip(this.intro.timeline.time > 0.3, Math.min(1, this.escHold / CFG.intro.skipHoldTime));
+      const intro = this.intro;
+      if (this.escHold >= CFG.intro.skipHoldTime) {
+        this.escHold = 0;
+        intro.skip();
+      } else intro.update(scaledDt);
+      if (intro.handedOff && this.fsm.is('INTRO')) {
+        this.player.applyVisual(alpha);
+        if (!this.player.root.visible) {
+          const head = this.tmp.copy(this.player.root.position).setY(this.player.root.position.y + CFG.intro.eyeHeight);
+          if (cam.position.distanceTo(head) > CFG.intro.revealDistance) this.player.root.visible = true;
+        }
+        this.camRig.update(frameDt, { dx: 0, dy: 0 }, this.player.root.position);
+        this.fishing.render(alpha, rt);
+      }
     }
 
     this.effects.update(scaledDt, rt);
@@ -402,11 +454,13 @@ export class Game {
     const R = this.ctx.renderer;
     const H = R.domElement.clientHeight;
     R.shadowMap.autoUpdate = false;
+    this.ctx.sky.follow(this.floatCam);
     R.setScissorTest(true);
     R.setViewport(r.x, H - r.y - r.h, r.w, r.h);
     R.setScissor(r.x, H - r.y - r.h, r.w, r.h);
     R.render(this.ctx.scene, this.floatCam);
     R.setScissorTest(false);
+    this.ctx.sky.follow(this.ctx.camera);
     R.setViewport(0, 0, R.domElement.clientWidth, H);
     R.shadowMap.autoUpdate = true;
   }

@@ -17,6 +17,8 @@ export type AssetKind =
   | 'worm'
   | 'hook'
   | 'cabin'
+  | 'cabinInterior'
+  | 'povHand'
   | 'boat'
   | 'spruceNear'
   | 'spruceMid'

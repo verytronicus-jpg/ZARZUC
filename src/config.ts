@@ -581,14 +581,54 @@ export const CFG = {
     messageTime: 2.6,
   },
 
-  /** intro „otwierane drzwi” (stan INTRO globalnej FSM) */
+  /** intro „otwierane drzwi” (stan INTRO globalnej FSM) – czasy [s] i położenia kamery POV [m] */
   intro: {
+    fadeIn: 0.6,
+    reachStart: 0.6,
+    latchAt: 1.2,
+    doorOpenStart: 1.25,
+    doorOpenEnd: 2.6,
+    doorAngleDeg: 100,
+    /** ręka trzyma drzwi przez tyle sekund od początku otwierania, potem puszcza */
+    handRelease: 0.85,
+    /** adaptacja oka do światła [s] */
+    adaptTime: 1.6,
+    stepStart: 2.6,
+    handoff: 3.6,
+    hudAt: 4.8,
     /** czas płynnego przejścia kamery do widoku 3. osoby [s] */
     blendTime: 1.2,
     /** przytrzymanie Esc do pominięcia [s] */
     skipHoldTime: 1.0,
-    /** pitch kamery gracza po intro [rad] */
-    endPitch: 0.22,
+    /** kamera POV: wysokość oczu nad podłogą, odległość od drzwi, przesunięcie w bok (− = w stronę klamki) */
+    eyeHeight: 1.65,
+    startBack: 2.0,
+    startSide: -0.25,
+    leanIn: 1.25,
+    pullBack: 0.35,
+    pullSide: -0.45,
+    /** gdzie kończy się krok na ganku (od przedniej krawędzi ganku) */
+    porchEdge: 0.45,
+    fov: 68,
+    headBob: 0.035,
+    /** światło: wnętrze ciemne (mnożnik otoczenia i ekspozycji), „oślepienie” po otwarciu */
+    ambientInside: 0.3,
+    exposureInside: 1.7,
+    exposureFlash: 2.4,
+    /** głośność natury wewnątrz (0..1) */
+    ambienceInside: 0.25,
+    /** szpary w drzwiach (światło z zewnątrz) */
+    gapColor: 0xffc070,
+    gapIntensity: 5,
+    gapWidth: 0.02,
+    /** lampa we wnętrzu (światło punktowe) */
+    lampColor: 0xffa860,
+    lampIntensity: 5,
+    lampDistance: 6,
+    /** kamera gracza po intro */
+    endPitch: 0.36,
+    /** postać staje się widoczna, gdy kamera odjedzie od głowy na tyle [m] */
+    revealDistance: 0.6,
   },
 
   /** dym z komina chatki */

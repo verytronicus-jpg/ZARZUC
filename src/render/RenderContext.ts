@@ -64,18 +64,27 @@ export class RenderContext {
     window.addEventListener('resize', () => this.resize());
   }
 
+  /** mnożniki światła otoczenia i ekspozycji (intro: ciemne wnętrze → oślepienie → norma) */
+  private lightScale = { ambient: 1, exposure: 1 };
+
+  setLightScale(ambient: number, exposure: number): void {
+    this.lightScale.ambient = ambient;
+    this.lightScale.exposure = exposure;
+    this.applySun();
+  }
+
   applySun(): void {
     const s = CFG.sun;
     this.sunDir.setFromSphericalCoords(1, (90 - s.elevationDeg) * DEG, s.azimuthDeg * DEG);
     this.sun.color.set(s.color);
     this.sun.intensity = s.intensity;
     this.fill.color.set(s.fillColor);
-    this.fill.intensity = s.fillIntensity;
+    this.fill.intensity = s.fillIntensity * this.lightScale.ambient;
     this.fill.position.setFromSphericalCoords(100, (90 - s.fillElevationDeg) * DEG, s.fillAzimuthDeg * DEG);
     this.hemi.color.set(s.hemiSky);
     this.hemi.groundColor.set(s.hemiGround);
-    this.hemi.intensity = s.hemiIntensity;
-    this.renderer.toneMappingExposure = CFG.render.exposure;
+    this.hemi.intensity = s.hemiIntensity * this.lightScale.ambient;
+    this.renderer.toneMappingExposure = CFG.render.exposure * this.lightScale.exposure;
     const fog = this.scene.fog as THREE.Fog;
     fog.color.set(CFG.render.fogColor);
     fog.near = CFG.render.fogNear;

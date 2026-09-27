@@ -30,6 +30,7 @@ import type { Collider } from '../player/collision';
 import type { AssetKind, AssetRegistry } from '../assets/AssetRegistry';
 import type { RenderContext } from '../render/RenderContext';
 import { ChimneySmoke } from './ChimneySmoke';
+import { cabinLayout } from '../assets/procedural/cabin';
 import { SHADOW_LAYER } from '../render/layers';
 
 /** Wspólne uniformy wiatru dla roślinności (czas renderu). */
@@ -76,6 +77,7 @@ export class World {
   readonly group = new THREE.Group();
   cabin!: THREE.Object3D;
   boat!: THREE.Object3D;
+  lamp: THREE.PointLight | null = null;
   smoke!: ChimneySmoke;
   time = 0;
   private boatBase = new THREE.Vector3();
@@ -155,17 +157,28 @@ export class World {
     return structureDistance(x, z);
   }
 
-  /** Czy punkt (np. kamery) jest wewnątrz bryły chatki (ściany + dach) – ramię kamery się skraca. */
-  cameraBlocked(x: number, y: number, z: number, pad = 0.3): boolean {
-    const W = CFG.world;
+  /** Czy punkt (np. kamery) jest wewnątrz bryły chatki (ściany, okap, dach) – ramię kamery się skraca. */
+  cameraBlocked(x: number, y: number, z: number, pad = 0.25): boolean {
+    const L = cabinLayout();
     const c = cabinFrame();
     const dx = x - c.x;
     const dz = z - c.z;
     const lx = dx * c.rx + dz * c.rz;
     const lz = dx * c.fx + dz * c.fz;
-    if (Math.abs(lx) > W.cabinWidth / 2 + 0.6 + pad || Math.abs(lz) > W.cabinDepth / 2 + 0.5 + pad) return false;
-    const roofTop = c.ground + W.floorHeight + 2.5 + 2.2 * (1 - Math.min(1, Math.abs(lz) / (W.cabinDepth / 2 + 0.5)));
-    return y < roofTop + pad;
+    const halfW = L.W / 2 + L.gableOver + pad;
+    const halfD = L.D / 2 + L.eave + pad;
+    if (Math.abs(lx) > halfW || Math.abs(lz) > halfD) return false;
+    const ly = y - c.ground;
+    const top = L.wallTop;
+    // dach: od okapu do kalenicy
+    const roofY = top + L.ridge * (1 - Math.min(1, Math.max(0, Math.abs(lz) - 0) / (L.D / 2 + 0.1)));
+    if (ly > roofY + 0.25 + pad) return false;
+    // ściany (z grubością bala) – wszystko poniżej okapu wewnątrz obrysu
+    const wallHalfW = L.W / 2 + L.logR + 0.3 + pad;
+    const wallHalfD = L.D / 2 + L.logR + pad;
+    if (Math.abs(lx) < wallHalfW && Math.abs(lz) < wallHalfD) return true;
+    // okap wystaje nad gankiem
+    return ly > top - 0.3 - pad;
   }
 
   update(dt: number): void {
@@ -373,6 +386,14 @@ export class World {
     this.cabin.position.set(c.x, c.ground, c.z);
     this.cabin.rotation.y = c.yaw;
     this.group.add(this.cabin);
+    // wnętrze przy drzwiach (widać je w intro i przez otwarte drzwi) + ciepłe światło lampy
+    this.cabin.add(this.assets.create('cabinInterior'));
+    const lampAt = this.cabin.getObjectByName('interior_light');
+    if (lampAt) {
+      const I = CFG.intro;
+      this.lamp = new THREE.PointLight(I.lampColor, I.lampIntensity, I.lampDistance, 2);
+      lampAt.add(this.lamp);
+    }
     this.cabin.updateMatrixWorld(true);
     // kolizje: ściany (drzwi zamknięte – wejście tylko w intro), stos drewna, beczka
     this.colliders.push({ kind: 'box', x: c.x, z: c.z, hx: W.cabinWidth / 2 + 0.2, hz: W.cabinDepth / 2 + 0.2, angle: c.yaw });
