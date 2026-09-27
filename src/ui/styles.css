@@ -1,7 +1,8 @@
 :root {
   --ink: #f4efe4;
   --ink-dim: rgba(244, 239, 228, 0.7);
-  --panel: rgba(20, 24, 22, 0.58);
+  /* bez backdrop-filter: rozmycie nad płótnem WebGL kosztuje GPU w każdej klatce */
+  --panel: rgba(20, 24, 22, 0.7);
   --panel-strong: rgba(16, 19, 18, 0.82);
   --accent: #e8b04a;
   --good: #8fd06a;
@@ -43,7 +44,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
 #start .menu { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .btn { font-family: var(--ui); font-size: 17px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); background: rgba(20,20,18,0.45);
   border: 1px solid rgba(244,239,228,0.35); padding: 13px 34px; border-radius: 999px; cursor: pointer; min-width: 240px; text-align: left;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s; backdrop-filter: blur(4px); }
+  transition: background 0.2s, border-color 0.2s, transform 0.2s; }
 .btn:hover:not(:disabled) { background: rgba(232,176,74,0.85); border-color: var(--accent); color: #1b160c; transform: translateX(4px); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.small { min-width: 0; font-size: 13px; padding: 9px 20px; }
@@ -52,7 +53,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
 /* ---------- HUD ---------- */
 #hud { position: absolute; inset: 0; opacity: 0; transition: opacity 0.8s; }
 #hud.on { opacity: 1; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(6px); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 
 #objectives { position: absolute; top: 20px; left: 20px; padding: 14px 18px 12px; min-width: 260px; transition: opacity 1s; }
 #objectives h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
@@ -129,7 +130,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
 #clickplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 22px; font-size: 16px; text-align: center; }
 
 /* ---------- ekrany ---------- */
-.screen { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(6, 8, 7, 0.55); backdrop-filter: blur(3px); }
+.screen { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(6, 8, 7, 0.62); }
 .card { background: var(--panel-strong); border: 1px solid var(--line); border-radius: 16px; padding: 28px 34px; min-width: 340px; max-width: min(92vw, 720px); }
 .card h2 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: 34px; }
 .card .sub { color: var(--ink-dim); margin-bottom: 18px; font-size: 14px; }
@@ -199,3 +200,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
 #floatmarker[data-state="bite"] b, #floatmarker[data-state="under"] b { transform: translateX(-50%) scale(1); }
 @keyframes fmWiggle { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
 @keyframes fmPulse { from { box-shadow: 0 0 0 0 rgba(255,74,46,.7); } to { box-shadow: 0 0 0 12px rgba(255,74,46,0); } }
+
+/* branie – duży napis na środku */
+#bitealert { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); padding: 12px 26px; border-radius: 16px;
+  background: rgba(150, 30, 18, 0.82); color: #fff4e6; font-family: var(--ui); font-size: 30px; letter-spacing: 0.08em; text-align: center;
+  box-shadow: 0 6px 30px rgba(0,0,0,0.35); animation: biteIn 0.18s ease-out, biteBeat 0.32s ease-in-out 0.18s infinite alternate; pointer-events: none; }
+#bitealert kbd { font-size: 0.6em; vertical-align: middle; }
+#bitealert.hidden { display: none; }
+#bitealert.land { background: rgba(40, 110, 50, 0.85); animation: biteIn 0.18s ease-out; }
+@keyframes biteIn { from { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+@keyframes biteBeat { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.06); } }

@@ -4,7 +4,7 @@ import { dampAngle } from '../core/math';
 import { events } from '../core/Events';
 import type { Input } from '../core/Input';
 import type { World } from '../world/World';
-import { resolveCollisions } from './collision';
+import { CollisionGrid, resolveCollisions, type CollisionResult } from './collision';
 import { outsideBounds, onPier, porchHeight } from '../world/terrainMath';
 import { CharacterAnimator } from './CharacterAnimator';
 
@@ -25,6 +25,8 @@ export class Player {
   /** wymuszony kierunek patrzenia (np. celowanie) */
   faceYaw: number | null = null;
   private stepAcc = 0;
+  private grid: CollisionGrid | null = null;
+  private hit: CollisionResult = { x: 0, z: 0, hit: false };
 
   constructor(
     root: THREE.Object3D,
@@ -125,7 +127,8 @@ export class Player {
         }
         this.vel.multiplyScalar(0.5);
       }
-      const r = resolveCollisions(nx, nz, P.radius, this.world.colliders);
+      if (!this.grid) this.grid = new CollisionGrid(this.world.colliders);
+      const r = resolveCollisions(nx, nz, P.radius, this.grid.near(nx, nz, P.radius + 0.5), this.hit);
       if (!blocked(r.x, r.z)) {
         this.pos.x = r.x;
         this.pos.z = r.z;

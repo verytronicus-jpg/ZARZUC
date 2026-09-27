@@ -80,28 +80,47 @@ export class Heightmap {
   }
 
   /** indeks komórki i ułamek (0..1) wzdłuż osi */
-  private locate(v: number, arr: Float64Array, fine0: number, fineI: number, fineN: number): [number, number] {
+  /** wynik locate(): indeks komórki i ułamek w niej (pola zamiast krotki – bez alokacji) */
+  private li = 0;
+  private lf = 0;
+
+  private locate(v: number, arr: Float64Array, fine0: number, fineI: number, fineN: number): void {
     const f = (v - fine0) / this.fineD;
     if (f >= 0 && f < fineN) {
       const k = Math.floor(f);
-      return [fineI + k, f - k];
+      this.li = fineI + k;
+      this.lf = f - k;
+      return;
     }
     // wyszukiwanie binarne w części rzadkiej
     let lo = 0;
     let hi = arr.length - 1;
-    if (v <= arr[0]) return [0, 0];
-    if (v >= arr[hi]) return [hi - 1, 1];
+    if (v <= arr[0]) {
+      this.li = 0;
+      this.lf = 0;
+      return;
+    }
+    if (v >= arr[hi]) {
+      this.li = hi - 1;
+      this.lf = 1;
+      return;
+    }
     while (hi - lo > 1) {
       const m = (lo + hi) >> 1;
       if (arr[m] <= v) lo = m;
       else hi = m;
     }
-    return [lo, (v - arr[lo]) / (arr[lo + 1] - arr[lo])];
+    this.li = lo;
+    this.lf = (v - arr[lo]) / (arr[lo + 1] - arr[lo]);
   }
 
   heightAt(x: number, z: number): number {
-    const [i, u] = this.locate(x, this.xs, this.fineX0, this.fineIX, this.fineNX);
-    const [j, v] = this.locate(z, this.zs, this.fineZ0, this.fineIZ, this.fineNZ);
+    this.locate(x, this.xs, this.fineX0, this.fineIX, this.fineNX);
+    const i = this.li;
+    const u = this.lf;
+    this.locate(z, this.zs, this.fineZ0, this.fineIZ, this.fineNZ);
+    const j = this.li;
+    const v = this.lf;
     const h00 = this.h(i, j);
     const h10 = this.h(i + 1, j);
     const h01 = this.h(i, j + 1);

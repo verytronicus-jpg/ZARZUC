@@ -13,6 +13,14 @@ export function fishArtUrl(id: SpeciesId): string {
   return `ui/fish/${id}.webp`;
 }
 
+/** Zapis tekstu/stylu tylko przy zmianie – HUD aktualizowany co klatkę nie wymusza ciągłego przeliczania układu. */
+function txt(e: HTMLElement, v: string): void {
+  if (e.textContent !== v) e.textContent = v;
+}
+function css(e: HTMLElement, prop: 'width' | 'left' | 'top', v: string): void {
+  if (e.style[prop] !== v) e.style[prop] = v;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -230,9 +238,9 @@ export class UI {
 
   setStatus(baitOn: boolean, dragKgf: number, lineM: number, hasRod: boolean): void {
     this.wormItem.classList.toggle('off', !baitOn);
-    (this.wormItem.querySelector('b') as HTMLElement).textContent = baitOn ? 'jest' : 'brak';
-    this.dragVal.textContent = `${fmt(dragKgf, 2)} kgf`;
-    this.lineVal.textContent = `${fmt(lineM, 1)} m`;
+    txt(this.wormItem.querySelector('b') as HTMLElement, baitOn ? 'jest' : 'brak');
+    txt(this.dragVal, `${fmt(dragKgf, 2)} kgf`);
+    txt(this.lineVal, `${fmt(lineM, 1)} m`);
     this.status.style.opacity = hasRod ? '1' : '0.55';
   }
 
@@ -260,8 +268,8 @@ export class UI {
     this.prompt.classList.remove('hidden');
     const html = text.replace(/\[(.+?)\]/g, '<kbd>$1</kbd>');
     if (this.prompt.innerHTML !== html) this.prompt.innerHTML = html;
-    this.prompt.style.left = `${x}px`;
-    this.prompt.style.top = `${y}px`;
+    css(this.prompt, 'left', `${x}px`);
+    css(this.prompt, 'top', `${y}px`);
   }
 
   setCrosshair(on: boolean): void {
@@ -271,40 +279,47 @@ export class UI {
   setPower(visible: boolean, power: number, rangeText: string): void {
     this.power.classList.toggle('hidden', !visible);
     if (visible) {
-      this.powerFill.style.width = `${(power * 100).toFixed(1)}%`;
-      this.powerRange.textContent = rangeText;
+      css(this.powerFill, 'width', `${(power * 100).toFixed(1)}%`);
+      txt(this.powerRange, rangeText);
     }
   }
 
   setHold(progress: number | null): void {
     this.hold.classList.toggle('hidden', progress === null);
-    if (progress !== null) this.holdFill.style.width = `${progress * 100}%`;
+    if (progress !== null) css(this.holdFill, 'width', `${progress * 100}%`);
   }
 
   setFight(v: FightView | null): void {
     this.fight.classList.toggle('hidden', !v);
     if (!v) return;
     const E = this.fightEls;
-    E.sp.textContent = v.species;
+    txt(E.sp, v.species);
     const r = Math.min(1.2, v.tensionRatio);
-    E.tfill.style.width = `${Math.min(100, r * 100)}%`;
-    E.tfill.className = 'fill' + (r > CFG.ui.tensionRed ? ' r' : r > CFG.ui.tensionYellow ? ' y' : '');
-    E.tdrag.style.left = `${Math.min(100, v.dragRatio * 100)}%`;
-    E.tv.textContent = `${Math.round(v.tensionRatio * 100)} %`;
-    E.fv.textContent = `${Math.round(v.fatigue * 100)} %`;
-    E.sfill.style.width = `${v.fatigue * 100}%`;
-    E.dv.textContent = `${fmt(v.dragKgf, 2)} kgf`;
-    E.lv.textContent = `${fmt(v.line, 1)} m`;
+    css(E.tfill, 'width', `${Math.min(100, r * 100)}%`);
+    const cls = 'fill' + (r > CFG.ui.tensionRed ? ' r' : r > CFG.ui.tensionYellow ? ' y' : '');
+    if (E.tfill.className !== cls) E.tfill.className = cls;
+    css(E.tdrag, 'left', `${Math.min(100, v.dragRatio * 100)}%`);
+    txt(E.tv, `${Math.round(v.tensionRatio * 100)} %`);
+    txt(E.fv, `${Math.round(v.fatigue * 100)} %`);
+    css(E.sfill, 'width', `${v.fatigue * 100}%`);
+    txt(E.dv, `${fmt(v.dragKgf, 2)} kgf`);
+    txt(E.lv, `${fmt(v.line, 1)} m`);
     E.slip.classList.toggle('on', v.slipping);
-    E.dot.style.left = `${50 + v.rodSide * 44}%`;
-    E.dot.style.top = `${88 - v.rodUp * 76}%`;
+    css(E.dot, 'left', `${50 + v.rodSide * 44}%`);
+    css(E.dot, 'top', `${88 - v.rodUp * 76}%`);
   }
+
+  private floatCamKey = '';
 
   setFloatCam(v: boolean): void {
     this.floatCam.classList.toggle('hidden', !v);
     if (v) {
       const r = this.floatCamRect();
-      Object.assign(this.floatCam.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+      const key = `${r.x},${r.y},${r.w},${r.h}`;
+      if (key !== this.floatCamKey) {
+        this.floatCamKey = key;
+        Object.assign(this.floatCam.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+      }
     }
   }
 
@@ -315,11 +330,27 @@ export class UI {
   }
 
   /** znacznik nad spławikiem w głównym widoku (null = ukryj) */
+  private biteAlert: HTMLElement | null = null;
+
+  /** Duży napis na środku ekranu w chwili brania (łatwo przegapić sam spławik). */
+  setBiteAlert(text: string | null, kind: 'bite' | 'land' = 'bite'): void {
+    if (!this.biteAlert) {
+      this.biteAlert = el('div', { id: 'bitealert', class: 'hidden' });
+      this.hud.append(this.biteAlert);
+    }
+    this.biteAlert.classList.toggle('hidden', text === null);
+    this.biteAlert.classList.toggle('land', kind === 'land');
+    if (text !== null) {
+      const html = text.replace(/\[(.+?)\]/g, '<kbd>$1</kbd>');
+      if (this.biteAlert.innerHTML !== html) this.biteAlert.innerHTML = html;
+    }
+  }
+
   setFloatMarker(x: number | null, y = 0): void {
     this.floatMarker.classList.toggle('hidden', x === null);
     if (x !== null) {
-      this.floatMarker.style.left = `${x}px`;
-      this.floatMarker.style.top = `${y}px`;
+      css(this.floatMarker, 'left', `${x}px`);
+      css(this.floatMarker, 'top', `${y}px`);
     }
   }
 

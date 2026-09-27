@@ -5,16 +5,18 @@ import { evaluateStrike, hookChance, biteRate, poissonFires } from '../src/fishi
 import { createBitePattern } from '../src/fishing/bitePatterns';
 
 describe('okna zacięcia', () => {
-  it('okna gatunków zgodne ze specyfikacją', () => {
+  it('okna gatunków: płoć najkrótsze, karp najdłuższe, każde ≥ czasu reakcji człowieka', () => {
     const w = Object.fromEntries(CFG.species.map((s) => [s.id, s.bite.window]));
-    expect(w).toEqual({ ploc: 0.5, okon: 0.8, karas: 1.0, leszcz: 1.2, karp: 1.5 });
+    expect(w).toEqual({ ploc: 0.9, okon: 1.2, karas: 1.4, leszcz: 1.6, karp: 1.9 });
+    // czas reakcji ~0,3–0,5 s + zauważenie – nawet płoć da się zaciąć „z marszu”
+    for (const v of Object.values(w)) expect(v).toBeGreaterThanOrEqual(0.8);
   });
 
   it('zacięcie bez brania = w pustkę', () => {
     expect(evaluateStrike('waiting', 0, 1, new Rng(1), CFG.bite)).toBe('empty');
   });
 
-  it('za wcześnie (NIBBLE): ~60% spłoszenia, reszta przerwana próba', () => {
+  it('za wcześnie (NIBBLE): ~35% spłoszenia, reszta przerwana próba', () => {
     const rng = new Rng(5);
     let spooked = 0;
     const N = 20000;
@@ -23,13 +25,14 @@ describe('okna zacięcia', () => {
       expect(['spooked', 'aborted']).toContain(r);
       if (r === 'spooked') spooked++;
     }
-    expect(spooked / N).toBeCloseTo(0.6, 1);
+    expect(spooked / N).toBeCloseTo(CFG.bite.earlyStrikeSpookChance, 1);
+    expect(spooked / N).toBeLessThan(0.45);
   });
 
-  it('w oknie BITE: 95% na początku, 85% na końcu', () => {
-    expect(hookChance(0, 1, CFG.bite)).toBeCloseTo(0.95, 6);
-    expect(hookChance(1, 1, CFG.bite)).toBeCloseTo(0.85, 6);
-    expect(hookChance(0.5, 1, CFG.bite)).toBeCloseTo(0.9, 6);
+  it('w oknie BITE: 97% na początku, 90% na końcu', () => {
+    expect(hookChance(0, 1, CFG.bite)).toBeCloseTo(0.97, 6);
+    expect(hookChance(1, 1, CFG.bite)).toBeCloseTo(0.9, 6);
+    expect(hookChance(0.5, 1, CFG.bite)).toBeCloseTo(0.935, 6);
     const rng = new Rng(9);
     let early = 0;
     let late = 0;
@@ -38,9 +41,9 @@ describe('okna zacięcia', () => {
       if (evaluateStrike('bite', 0.01, 1.5, rng, CFG.bite) === 'hooked') early++;
       if (evaluateStrike('bite', 1.49, 1.5, rng, CFG.bite) === 'hooked') late++;
     }
-    expect(early / N).toBeGreaterThan(0.93);
-    expect(late / N).toBeLessThan(0.87);
-    expect(late / N).toBeGreaterThan(0.83);
+    expect(early / N).toBeGreaterThan(0.95);
+    expect(late / N).toBeLessThan(0.92);
+    expect(late / N).toBeGreaterThan(0.88);
   });
 
   it('po oknie = przynęta zjedzona', () => {

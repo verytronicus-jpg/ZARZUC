@@ -44,17 +44,27 @@ export function getWaves(): WaveParam[] {
 
 /** Przesunięcie Gerstnera punktu spoczynkowego (x0,z0). */
 export function gerstner(x0: number, z0: number, t: number): { x: number; y: number; z: number } {
+  gerstnerInto(x0, z0, t);
+  return { x: gs.x, y: gs.y, z: gs.z };
+}
+
+/** Wynik gerstnerInto (bez alokacji w gorących pętlach). */
+const gs = { x: 0, y: 0, z: 0 };
+function gerstnerInto(x0: number, z0: number, t: number): void {
   let x = x0;
   let z = z0;
   let y = 0;
-  for (const w of params) {
+  for (let i = 0; i < params.length; i++) {
+    const w = params[i];
     const ph = w.k * (w.dx * x0 + w.dz * z0) - w.omega * t + w.phase;
     const c = Math.cos(ph);
     x += w.q * w.amp * w.dx * c;
     z += w.q * w.amp * w.dz * c;
     y += w.amp * Math.sin(ph);
   }
-  return { x, y: y + CFG.water.level, z };
+  gs.x = x;
+  gs.y = y + CFG.water.level;
+  gs.z = z;
 }
 
 /** Wysokość powierzchni wody w punkcie świata (x,z) w chwili t. */
@@ -62,11 +72,21 @@ export function waterHeight(x: number, z: number, t: number): number {
   let px = x;
   let pz = z;
   for (let i = 0; i < 4; i++) {
-    const d = gerstner(px, pz, t);
-    px -= d.x - x;
-    pz -= d.z - z;
+    gerstnerInto(px, pz, t);
+    px -= gs.x - x;
+    pz -= gs.z - z;
   }
-  return gerstner(px, pz, t).y;
+  gerstnerInto(px, pz, t);
+  return gs.y;
+}
+
+/**
+ * Przybliżona wysokość wody (jedno wyliczenie fal zamiast iteracji odwrotnej) – do wizualiów, gdzie błąd
+ * rzędu milimetrów nie ma znaczenia (np. żyłka leżąca na tafli). Fizyka spławika używa waterHeight().
+ */
+export function waterHeightFast(x: number, z: number, t: number): number {
+  gerstnerInto(x, z, t);
+  return gs.y;
 }
 
 /** Fragment GLSL – identyczny wzór jak gerstner() powyżej. */

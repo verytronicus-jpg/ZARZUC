@@ -11,12 +11,20 @@ export const WATER_LAYER = 2;
 export const REFLECT_LAYER = 3;
 /** Efekty rysowane po wodzie (kręgi, plusk, mgiełka). */
 export const FX_LAYER = 4;
+/** Podgląd spławika w rogu: tylko spławik, żyłka, ryba i niebo (+ woda z WATER_LAYER) – nie cała scena. */
+export const PIP_LAYER = 5;
 
 import type { Object3D } from 'three';
 
 /** Włącza odbicie w wodzie dla obiektu i jego dzieci. */
 export function reflectable(o: Object3D): Object3D {
   o.traverse((c) => c.layers.enable(REFLECT_LAYER));
+  return o;
+}
+
+/** Dodaje obiekt (i dzieci) do podglądu spławika. */
+export function pipVisible(o: Object3D): Object3D {
+  o.traverse((c) => c.layers.enable(PIP_LAYER));
   return o;
 }
 

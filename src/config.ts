@@ -113,6 +113,8 @@ export const CFG = {
       upWindows: 8,
       /** blokada podnoszenia po nieudanej próbie [s] */
       cooldown: 60,
+      /** gdy nawet minScale nie wystarcza – przejście na preset „Niska” */
+      autoLowPreset: true,
     },
     /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
     shadowProxyRadius: 55,
@@ -481,10 +483,18 @@ export const CFG = {
 
   line: {
     points: 40,
-    iterations: 10,
+    iterations: 20,
     gravity: G,
-    airDamping: 0.02,
-    waterDamping: 0.22,
+    airDamping: 0.07,
+    waterDamping: 0.3,
+    /** wizualny luz: maks. długość = prosta · (1 + frac) + abs [m] (reszta luzu nie tworzy pętli) */
+    visualSlackFrac: 0.06,
+    visualSlackAbs: 0.35,
+    /** przeskok szczytówki większy niż [m] (teleport) → żyłka układa się od nowa */
+    resetJump: 4,
+    /** wygląd: szerokość [px], podział krzywej, kolor */
+    widthPx: 1.8,
+    smoothSub: 3,
     waterBuoyancy: 0.85,
     /** wytrzymałość żyłki [kgf] (0,22 mm ≈ 5,5 kgf) */
     strengthKgf: 5.5,
@@ -561,12 +571,14 @@ export const CFG = {
     waitTimeout: 150,
     spookCooldown: 6,
     /** zacięcie podczas NIBBLE */
-    earlyStrikeSpookChance: 0.6,
+    earlyStrikeSpookChance: 0.35,
+    /** przy skubaniu: zwijanie dłuższe niż [s] płoszy rybę (krótki klik nie) */
+    reelSpookTime: 0.35,
     /** szansa zaczepienia na początku / końcu okna */
-    hookChanceStart: 0.95,
-    hookChanceEnd: 0.85,
+    hookChanceStart: 0.97,
+    hookChanceEnd: 0.9,
     /** obskubanie robaka przez małe ryby (na każdy NIBBLE) */
-    stealChance: 0.05,
+    stealChance: 0.03,
     /** ryba odpuszcza po NIBBLE bez brania */
     abandonChance: 0.12,
     /** szarpnięcie myszą jako zacięcie: suma ruchu w dół [px] w oknie [ms] */
@@ -587,8 +599,8 @@ export const CFG = {
     regen: 0.025,
     regenTensionBelow: 0.6,
     /** żyłka luźna dłużej niż… → szansa spięcia na sekundę */
-    slackTime: 1.5,
-    slackEscapePerSec: 0.35,
+    slackTime: 2.5,
+    slackEscapePerSec: 0.2,
     /** mnożnik zmęczenia, gdy wędka prowadzona przeciwnie do ucieczki */
     oppositeRodFatigue: 2,
     sideSteer: 0.6,
@@ -607,8 +619,8 @@ export const CFG = {
 
   landing: {
     /** odległość pozioma szczytówka→ryba */
-    maxDistance: 2.5,
-    maxStamina: 0.2,
+    maxDistance: 3.2,
+    maxStamina: 0.28,
     liftTime: 1.1,
   },
 
@@ -680,11 +692,13 @@ export const CFG = {
       rays: true,
       reflection: true,
       reflectionScale: 0.5,
-      refractScale: 1,
+      refractScale: 0.75,
       shadowMapSize: 2048,
       shadowFar: 110,
       shadowRadius: 3,
       shadowProxyRadius: 50,
+      /** bliskie świerki w pełnym modelu tylko w tym promieniu [m], dalej lżejszy */
+      treeLodRadius: 45,
       grassDensity: 1,
       grassRadius: 34,
     },
@@ -701,6 +715,7 @@ export const CFG = {
       shadowFar: 60,
       shadowRadius: 2,
       shadowProxyRadius: 40,
+      treeLodRadius: 28,
       grassDensity: 0.45,
       grassRadius: 24,
     },
@@ -747,14 +762,16 @@ export const CFG = {
   /** trawa na wietrze (kępki źdźbeł wokół gracza) */
   grass: {
     clumpsPerM2: 3.2,
-    bladesPerClump: 7,
+    bladesPerClump: 5,
     /** segmenty źdźbła (2 = 4 trójkąty) */
     segments: 2,
     height: 0.38,
-    width: 0.035,
+    width: 0.042,
     maxInstances: 20000,
     /** co ile metrów ruchu gracza odświeżać zestaw kępek (wybór z takim zapasem promienia) */
     refreshStep: 5,
+    /** jak mocno przerzedzać trawę na skraju pola (0 = wcale, 1 = do zera) */
+    edgeThinning: 0.6,
     colorBase: 0x3a5a1c,
     colorMid: 0x6a8f2e,
     colorTip: 0xc2bb62,
@@ -811,35 +828,35 @@ export const CFG = {
       id: 'ploc', name: 'Płoć', chance: 0.35, minCm: 12, maxCm: 32, a: 0.0103, b: 3.08, strength: 1.0,
       lengthSkew: 2.2, nibblerMaxCm: 18,
       zone: { depthMin: 0.4, depthMax: 2.6, depthRamp: 0.8, reedBonus: 0.15, structureBonus: 0.1, structureRange: 10, outside: 0.45, inside: 1 },
-      bite: { window: 0.5 },
+      bite: { window: 0.9 },
       fight: { cruise: 0.5, peak: 1.0, surgeMin: 1.0, surgeMax: 1.6, pauseMin: 1.5, pauseMax: 3.5, headshake: 0.15, headshakeHz: 5, dragMul: 0.8, endurance: 7, seekDeep: 0.3, seekReeds: 0.4, circling: 0.2 },
     },
     {
       id: 'okon', name: 'Okoń', chance: 0.25, minCm: 12, maxCm: 38, a: 0.0089, b: 3.13, strength: 1.2,
       lengthSkew: 2.0, nibblerMaxCm: 17,
       zone: { depthMin: 0.8, depthMax: 3.5, depthRamp: 0.8, reedBonus: 1.0, structureBonus: 1.3, structureRange: 11, outside: 0.45, inside: 1 },
-      bite: { window: 0.8 },
+      bite: { window: 1.2 },
       fight: { cruise: 0.45, peak: 1.0, surgeMin: 1.0, surgeMax: 1.5, pauseMin: 1.2, pauseMax: 2.8, headshake: 0.45, headshakeHz: 7, dragMul: 0.9, endurance: 9, seekDeep: 0.5, seekReeds: 0.6, circling: 0.15 },
     },
     {
       id: 'karas', name: 'Karaś', chance: 0.2, minCm: 10, maxCm: 30, a: 0.02, b: 3.0, strength: 0.9,
       lengthSkew: 1.8, nibblerMaxCm: 16,
       zone: { depthMin: 0.2, depthMax: 1.9, depthRamp: 0.6, reedBonus: 1.6, structureBonus: 0.1, structureRange: 14, outside: 0.15, inside: 1 },
-      bite: { window: 1.0 },
+      bite: { window: 1.4 },
       fight: { cruise: 0.5, peak: 0.9, surgeMin: 1.0, surgeMax: 2.0, pauseMin: 2.5, pauseMax: 5.0, headshake: 0.2, headshakeHz: 3, dragMul: 1.1, endurance: 11, seekDeep: 0.2, seekReeds: 0.9, circling: 0.8 },
     },
     {
       id: 'leszcz', name: 'Leszcz', chance: 0.13, minCm: 25, maxCm: 60, a: 0.0086, b: 3.13, strength: 0.8,
       lengthSkew: 1.9, nibblerMaxCm: 0,
       zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0, structureBonus: 0, structureRange: 8, outside: 0.06, inside: 1.5 },
-      bite: { window: 1.2 },
+      bite: { window: 1.6 },
       fight: { cruise: 0.62, peak: 0.78, surgeMin: 1.0, surgeMax: 2.0, pauseMin: 8, pauseMax: 16, headshake: 0.05, headshakeHz: 2, dragMul: 2.4, endurance: 13, seekDeep: 1.0, seekReeds: 0, circling: 0.1 },
     },
     {
       id: 'karp', name: 'Karp', chance: 0.07, minCm: 35, maxCm: 80, a: 0.013, b: 3.05, strength: 1.6,
       lengthSkew: 1.7, nibblerMaxCm: 0,
       zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0.3, structureBonus: 0, structureRange: 12, outside: 0.04, inside: 1.5 },
-      bite: { window: 1.5 },
+      bite: { window: 1.9 },
       fight: { cruise: 0.4, peak: 1.0, surgeMin: 2.0, surgeMax: 3.0, pauseMin: 3.0, pauseMax: 7.0, headshake: 0.12, headshakeHz: 2.5, dragMul: 1.0, endurance: 26, seekDeep: 0.7, seekReeds: 0.7, circling: 0.2 },
     },
   ] as SpeciesConfig[],

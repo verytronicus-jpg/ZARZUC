@@ -217,9 +217,12 @@ export class GrassField {
           const i = list[j];
           const dx = this.px[i] - player.x;
           const dz = this.pz[i] - player.z;
-          if (dx * dx + dz * dz > R2) continue;
-          // gęstość: deterministycznie (hash indeksu) – bez migotania przy zmianie presetu
-          if (((i * 2654435761) >>> 0) / 4294967296 > density) continue;
+          const d2 = dx * dx + dz * dz;
+          if (d2 > R2) continue;
+          // gęstość: deterministycznie (hash indeksu) – bez migotania; na skraju pola (zanik) rzadziej
+          const e = Math.min(1, Math.max(0, (Math.sqrt(d2) - radius * 0.45) / (radius * 0.55)));
+          const keep = density * (1 - CFG.grass.edgeThinning * e * e * (3 - 2 * e));
+          if (((i * 2654435761) >>> 0) / 4294967296 > keep) continue;
           dst.set(this.mats.subarray(i * 16, i * 16 + 16), k * 16);
           const t = this.tints[i];
           col[k * 3] = t;

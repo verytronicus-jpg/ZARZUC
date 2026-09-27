@@ -77,10 +77,10 @@ Wymagana przeglądarka z WebGL 2.
 |---|---|
 | **WASD**, **Shift** | ruch, bieg |
 | **Mysz** | kamera (kliknij w obraz, aby przechwycić kursor; gdy przeglądarka/ramka blokuje pointer lock, gra przechodzi w tryb wolnego kursora) |
-| **E** | wyciągnięcie ryby (gdy zmęczona i blisko) · interakcje z obiektami w pobliżu |
+| **E** / **Spacja** | wyciągnięcie ryby (gdy zmęczona i blisko – na środku ekranu pojawi się „Wyciągnij rybę”) · **E**: interakcje |
 | **F** (przytrzymaj 1,5 s) | nabicie robaka |
 | **LPM** (przytrzymaj) | rzut — pasek siły waha się 0→100%→0 · w wodzie: zwijanie (pusty zestaw ~3 m/s, w holu 0,8 m/s) |
-| **PPM** | zacięcie (albo szybkie szarpnięcie myszą w dół) |
+| **LPM** (klik w chwili brania), **PPM**, **Spacja** | zacięcie (albo szybkie szarpnięcie myszą w dół) – na środku ekranu pojawia się „BIERZE!” |
 | **Kółko** | hamulec kołowrotka 0,5–6 kgf co 0,25 |
 | **Mysz w holu** | kąt wędki: lewo/prawo i w górę |
 | **Tab** | dziennik połowów i rekordy |
@@ -97,10 +97,14 @@ Wymagana przeglądarka z WebGL 2.
    * **karaś** – delikatne drżenie, spławik powoli sunie w bok (1,0 s),
    * **leszcz** – spławik **unosi się i kładzie płasko** (ryba podnosi śrucinę), potem odjeżdża (1,2 s),
    * **karp** – kilka drgnięć, potem spławik znika i żyłka ucieka (1,5 s).
-4. Zatnij w oknie brania. Za wcześnie → spłoszona ryba; za późno → robak zjedzony.
+4. Gdy spławik zniknie pod wodą, na środku ekranu pojawi się **„BIERZE!”** – kliknij (LPM, PPM albo Spacja).
+   Okna zacięcia: płoć 0,9 s, okoń 1,2 s, karaś 1,4 s, leszcz 1,6 s, karp 1,9 s. Za wcześnie (spławik tylko drga) →
+   ryba może się spłoszyć (35%); za późno → robak zjedzony.
 5. Hol: kręć (LPM), gdy napięcie jest bezpieczne; ustaw hamulec kółkiem; prowadź wędkę w bok **przeciwnie** do
    ucieczki ryby (męczy się 2× szybciej). Duży karp (5 kg) ciągnie ~78 N przy żyłce 54 N — bez hamulca pęknie.
-6. Gdy ryba jest zmęczona (< 20%) i blisko szczytówki (< 2,5 m w poziomie): **[E] Wyciągnij**.
+6. Gdy ryba jest zmęczona (< 28%) i blisko szczytówki (< 3,2 m w poziomie): **[E] / [Spacja] Wyciągnij**.
+   Wystarczy trzymać LPM – przy domyślnym hamulcu (3 kgf) żyłka nie pęknie; hamulec i prowadzenie wędki
+   skracają hol i pomagają przy dużych karpiach.
 
 Miejsce ma znaczenie: płytko/przy trzcinach → płoć, karaś; przy pomoście, cyplu i zwalonym drzewie → okoń;
 głęboko (> 2,5 m, środek jeziora i dołek) → leszcz i karp.
@@ -158,10 +162,12 @@ porażki: `MISSED_EARLY`, `BAIT_STOLEN`, `LINE_SNAPPED`, `FISH_ESCAPED`. Każdy 
   leży płasko; gdy dno jest płycej niż grunt (1,2 m), zostaje przechylony (a brania są rzadsze).
   Wzory brań nie „animują” spławika — dokładają siłę (gramy), podnoszą śrucinę albo znoszą zestaw w bok,
   a resztę robi fizyka.
-* **Żyłka** – lina Verleta (40 punktów, 10 iteracji), pod wodą większy opór. **Tylko wizualna.**
+* **Żyłka** – lina Verleta (40 punktów, 20 iteracji), pod wodą większy opór, bez ryby leży na tafli; luz wizualny
+  ograniczony do naturalnego zwisu (bez pętli). Rysowana jako gładka wstęga o stałej grubości (Catmull-Rom),
+  interpolowana między krokami fizyki i dociągnięta do wyrenderowanej szczytówki. **Tylko wizualna.**
 * **Napięcie** (`fishing/tension.ts`) – `s = d − L`, `T = k_eff·s + c·ds/dt` (`k_eff` = wędka i żyłka szeregowo,
   `k_żyłki = EA/L`). Hamulec oddaje żyłkę, gdy `T > hamulec` (z małą bezwładnością szpuli — ostre zrywy potrafią
-  go przebić). Zerwanie: `T > 54 N` dłużej niż 0,1 s. Luźna żyłka > 1,5 s → 35%/s szans na spięcie ryby.
+  go przebić). Zerwanie: `T > 54 N` dłużej niż 0,1 s. Luźna żyłka > 2,5 s → 20%/s szans na spięcie ryby.
 * **Ryba w holu** – `m·a = F_ryby − T·kierunek_do_wędki − opór`, `F_ryby = siła·waga·g·(0,3+0,7·wytrzymałość)·zryw`;
   zrywy o charakterze gatunku, dążenie do głębi/trzcin, wytrzymałość maleje ∝ `T·dt`.
 * **Wędka** – szczytówka to łańcuch 6 segmentów; ugięcie `T/k_rod` przez sprężynę z tłumieniem. Model napięcia

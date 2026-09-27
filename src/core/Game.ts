@@ -15,7 +15,7 @@ import { World } from '../world/World';
 import { resetWorldCaches, porchStart } from '../world/terrainMath';
 import { DoorIntro } from '../cutscene/DoorIntro';
 import { preloadTextures } from '../render/textures';
-import { reflectable } from '../render/layers';
+import { pipVisible, reflectable } from '../render/layers';
 import * as terrainMath from '../world/terrainMath';
 import { Player } from '../player/Player';
 import { Preparation } from '../player/Preparation';
@@ -60,6 +60,7 @@ export class Game {
   private hudOn = false;
   private lastCatchRecord = false;
   private tmp = new THREE.Vector3();
+  private tmp2 = new THREE.Vector3();
   /** kamera podglądu spławika (obraz w obrazie) */
   private floatCam = new THREE.PerspectiveCamera(32, 16 / 10, 0.05, 400);
   private floatCamPos = new THREE.Vector3();
@@ -81,6 +82,8 @@ export class Game {
     this.rodObj = reflectable(this.assets.create('rod'));
     this.boxObj = this.assets.create('wormBox');
     reflectable(this.fishing.floatObj);
+    // podgląd spławika rysuje tylko zestaw (nie całą scenę)
+    for (const o of [this.fishing.floatObj, this.fishing.hookObj, this.fishing.lineRenderer.object, this.fishing.dropperRenderer.object]) pipVisible(o);
     for (const o of [this.rodObj, this.boxObj])
       o.traverse((c) => {
         const m = c as THREE.Mesh;
@@ -91,6 +94,11 @@ export class Game {
     this.debug = new DebugPanel((path) => this.onConfigChange(path));
 
     this.fishing.onMessage = (t, k, time) => this.ui.message(t, k, time);
+    // słaby sprzęt: automatycznie lżejszy preset, żeby gra była płynna
+    this.ctx.onTooSlow = () => {
+      this.setQuality('low');
+      this.ui.message('Jakość grafiki obniżona do „Niska” – dla płynności', 'info');
+    };
     this.prep.onMessage = (t, k) => this.ui.message(t, k);
     this.fishing.onCatch = (f) => this.onCatch(f);
     this.fishing.onSurge = () => (this.camRig.shake = 1);
@@ -477,7 +485,8 @@ export class Game {
     const r = this.ui.floatCamRect();
     const b = f.floatObj.position;
     const dir = this.tmp.set(b.x - this.player.pos.x, 0, b.z - this.player.pos.z).normalize();
-    const want = new THREE.Vector3(b.x - dir.x * 1.15 + dir.z * 0.25, f.bobber.lastSurfaceY + 0.24, b.z - dir.z * 1.15 - dir.x * 0.25);
+    // z boku linii gracz–spławik: żyłka wchodzi w kadr z boku, a nie przecina go przez środek
+    const want = this.tmp2.set(b.x + dir.z * 1.1 - dir.x * 0.35, f.bobber.lastSurfaceY + 0.24, b.z - dir.x * 1.1 - dir.z * 0.35);
     if (!this.floatCamInit) {
       this.floatCamPos.copy(want);
       this.floatCamInit = true;
@@ -506,18 +515,26 @@ export class Game {
     let hint = '';
     if (prep.baitProgress === null) hint = f.hint;
     ui.setHint(hint.replace(/\[(.+?)\]/g, '<kbd>$1</kbd>'));
+    // branie i moment wyciągnięcia – duży napis na środku
+    if (f.fsm.is('BITE')) ui.setBiteAlert('BIERZE! Zatnij – [LPM]', 'bite');
+    else if (f.fsm.is('FIGHT') && f.canLand) ui.setBiteAlert('Wyciągnij rybę – [E]', 'land');
+    else ui.setBiteAlert(null);
 
     // podpowiedź nad obiektem
     const it = prep.interaction.current;
     if (it && !this.catchOpen) {
-      const p = this.tmp.copy(prep.interaction.currentPos).add(new THREE.Vector3(0, 0.3, 0)).project(this.ctx.camera);
+      const p = this.tmp.copy(prep.interaction.currentPos);
+      p.y += 0.3;
+      p.project(this.ctx.camera);
       if (p.z < 1) {
         const x = (p.x * 0.5 + 0.5) * window.innerWidth;
         const y = (-p.y * 0.5 + 0.5) * window.innerHeight;
         ui.setPrompt(`[E] ${it.label()}`, x, y);
       } else ui.setPrompt(null);
     } else if (f.canLand && f.fsm.is('FIGHT') && f.fish) {
-      const p = this.tmp.copy(f.fish.pos).add(new THREE.Vector3(0, 0.5, 0)).project(this.ctx.camera);
+      const p = this.tmp.copy(f.fish.pos);
+      p.y += 0.5;
+      p.project(this.ctx.camera);
       ui.setPrompt('[E] Wyciągnij', (p.x * 0.5 + 0.5) * window.innerWidth, (-p.y * 0.5 + 0.5) * window.innerHeight);
     } else ui.setPrompt(null);
 

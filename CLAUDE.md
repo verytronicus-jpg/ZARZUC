@@ -58,7 +58,7 @@ src/render/
   SkyDome.ts                kopuła z panoramą gór (public/textures/panorama.jpg)
   materialsFx.ts            splatting terenu (6 tekstur, mokry brzeg, las z daleka), detal trójplanarny
   textures.ts               wszystkie tekstury (preload w BOOT)
-  layers.ts                 warstwy: SHADOW(1) proxy cieni, WATER(2), REFLECT(3), FX(4)
+  layers.ts                 warstwy: SHADOW(1) proxy cieni, WATER(2), REFLECT(3), FX(4), PIP(5) podgląd spławika
   CameraRig.ts              kamera 3. osoby: orbita, ramię z kolizją (teren + chatka), tryb holu
   WaterEffects.ts           plusk i kręgi na wodzie
 src/assets/
@@ -128,7 +128,9 @@ Porażki z komunikatem: `MISSED_EARLY`, `BAIT_STOLEN`, `LINE_SNAPPED`, `FISH_ESC
 - Zarzucić można tylko w strefie brzegu/pomostu, patrząc na wodę (`updateCastZone`) i z robakiem na haczyku.
 - Branie: proces Poissona (`strike.ts`), intensywność zależna od miejsca (`species.ts`). **`CFG.bite.fastMode`
   (teraz `true`) skraca czekanie do ~3–7 s na testy.**
-- Zacięcie: PPM albo wyraźne szarpnięcie myszą w dół, liczone tylko w oknie BITE.
+- Zacięcie: LPM (klik albo trzymany) w chwili brania, PPM, Spacja albo szarpnięcie myszą w dół. W oknie BITE
+  zwijanie nie płoszy ryby (LPM = zacięcie); przy NIBBLE płoszy dopiero zwijanie > `CFG.bite.reelSpookTime`.
+  Duży napis „BIERZE!” / „Wyciągnij rybę” (`UI.setBiteAlert`). Wyciągnięcie: E albo Spacja.
 - Hol: `TensionModel` + `FightFish`; napięcie liczy model skalarny, lina Verleta jest tylko wizualna.
 
 ### Łowiska
@@ -142,7 +144,13 @@ trzcinach, okoń przy strukturach, leszcz i karp głęboko (> 2,5 m). `tests/wor
   (`scene.fog = null`), więc nowe materiały nie potrzebują obsługi mgły.
 - Cienie: `SunLight` (2 kaskady) + proxy roślinności na warstwie SHADOW odświeżane wokół gracza.
 - Roślinność: `InstancedMesh` przez `World.instanced(kind, list, opts)` (sway, odbicie, detal, lżejszy model do
-  cieni `shadowKind`); karty liści mają `alphaTest` i podbitą alfę w mipmapach (`vegMaterial`).
+  cieni `shadowKind`); karty liści mają `alphaTest` i podbitą alfę w mipmapach (`vegMaterial`). Bliskie świerki
+  mają LOD (`lodPair`: pełny model w promieniu `CFG.quality.*.treeLodRadius`, dalej średni) – podział razem
+  z proxy cieni w `updateShadowProxies`.
+- Podgląd spławika (`renderViewport`) rysuje tylko warstwę PIP (spławik, żyłka, niebo) + wodę – nie całą scenę.
+- Żyłka: `VerletLine` (fizyka wizualna w kroku, luz ograniczony do zwisu, bez ryby leży na tafli) +
+  `LineRenderer` (wstęga o stałej szerokości w px, Catmull-Rom); w renderze `renderInto` interpoluje i dociąga
+  końce do wyrenderowanej szczytówki i spławika.
 - Presety `CFG.quality.high/low` + `CFG.render.dynamicRes`; `?fixedres` wyłącza dynamiczną rozdzielczość.
 
 ### Modele
@@ -150,6 +158,17 @@ Każdy model powstaje przez `AssetRegistry.create(kind)`. Podmiana na GLB: wpis 
 (wczytywany w `main.ts` przed grą; brak pivotów/błąd → model proceduralny). Gra odwołuje się wyłącznie do
 **nazw pivotów z `PIVOTS`** (np. `hand_R`, `rod_tip`, `mouth`, `door_front`). Bohater proceduralny to
 `SkinnedMesh` z kośćmi o tych nazwach – animator obraca kości, wędka jest doczepiona do `hand_R`.
+
+### Płynność (co trzymać w ryzach)
+- **Zero alokacji w gorących ścieżkach** (krok fizyki, render): wektory robocze jako pola, wyniki przez parametr
+  `out` (np. `resolveCollisions`, `Heightmap.locate`, `gerstnerInto`). Śmieci = pauzy GC = przycięcia.
+- Kolizje gracza przez `CollisionGrid` (tylko pobliskie przeszkody).
+- HUD: zapis do DOM tylko przy zmianie (`txt`/`css` w `UI.ts`); **bez `backdrop-filter`** nad płótnem WebGL.
+- Shadery kompilowane zawczasu (`Game.warmUpShaders` w BOOT) – nowy typ materiału dodaj tak, by istniał w scenie
+  w chwili rozgrzewki (albo dołóż go tam tymczasowo jak rybę).
+- Dynamiczna rozdzielczość + automatyczny spadek na „Niska” (`RenderContext.onTooSlow`), gdy nawet 60% nie wystarcza.
+- Pomiar: skrypty z `window.__game` – owinięcie `loop.frame`/`render` w `performance.now()` i `performance.memory`
+  (Chromium z `--enable-precise-memory-info`), profil alokacji przez CDP `HeapProfiler.startSampling`.
 
 ## 5. Zasady nienaruszalne
 

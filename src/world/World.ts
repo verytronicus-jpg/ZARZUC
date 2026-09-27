@@ -5,7 +5,7 @@ import { Rng } from '../core/Rng';
 import { clamp01, lerp, smoothstep, DEG } from '../core/math';
 import { Heightmap } from './Heightmap';
 import { Water } from './Water';
-import { waterHeight } from './waves';
+import { waterHeight, waterHeightFast } from './waves';
 import {
   lakeR,
   lakeDepth,
@@ -81,12 +81,16 @@ export class World {
   boat!: THREE.Object3D;
   lamp: THREE.PointLight | null = null;
   grass!: GrassField;
+  /** układ chatki (stały; liczony raz – kamera pyta o kolizję co klatkę) */
+  private cabinL: ReturnType<typeof cabinLayout> | null = null;
   grassDirty = false;
   smoke!: ChimneySmoke;
   time = 0;
   private boatBase = new THREE.Vector3();
   /** cienie roślinności: tylko instancje blisko gracza (osobne siatki widoczne wyłącznie dla kamery cienia) */
-  private shadowSets: Array<{ src: THREE.InstancedMesh; proxy: THREE.InstancedMesh; pos: Float32Array }> = [];
+  private shadowSets: Array<{ mats: Float32Array; proxy: THREE.InstancedMesh; pos: Float32Array }> = [];
+  /** LOD drzew: pełny model tylko blisko gracza, dalej lżejszy (te same instancje, podział co kilka metrów ruchu) */
+  private lodSets: Array<{ full: THREE.InstancedMesh; lod: THREE.InstancedMesh; mats: Float32Array; cols: Float32Array; pos: Float32Array }> = [];
   private shadowFocus = new THREE.Vector3(1e9, 0, 1e9);
   /** siatka zajętości dla drzew (min. odstępy) */
   private occ = new Map<string, number>();
@@ -135,6 +139,11 @@ export class World {
     return waterHeight(x, z, t);
   }
 
+  /** Przybliżona wysokość wody (wizualia – np. żyłka na tafli). */
+  waterYFast(x: number, z: number): number {
+    return waterHeightFast(x, z, this.time);
+  }
+
   isWater(x: number, z: number, minDepth = 0.05): boolean {
     return lakeDepth(x, z) > minDepth;
   }
@@ -163,7 +172,7 @@ export class World {
 
   /** Czy punkt (np. kamery) jest wewnątrz bryły chatki (ściany, okap, dach) – ramię kamery się skraca. */
   cameraBlocked(x: number, y: number, z: number, pad = 0.25): boolean {
-    const L = cabinLayout();
+    const L = (this.cabinL ??= cabinLayout());
     const c = cabinFrame();
     const dx = x - c.x;
     const dz = z - c.z;
@@ -220,22 +229,59 @@ export class World {
   updateShadowProxies(focus: THREE.Vector3): void {
     if (focus.distanceToSquared(this.shadowFocus) < CFG.render.shadowProxyStep ** 2) return;
     this.shadowFocus.copy(focus);
-    const R2 = CFG.quality[CFG.quality.current].shadowProxyRadius ** 2;
-    const tmp = new THREE.Matrix4();
+    const Q = CFG.quality[CFG.quality.current];
+    const R2 = Q.shadowProxyRadius ** 2;
     for (const set of this.shadowSets) {
       let n = 0;
-      const N = set.src.count;
+      const N = set.pos.length / 2;
+      const dst = set.proxy.instanceMatrix.array as Float32Array;
       for (let i = 0; i < N; i++) {
         const dx = set.pos[i * 2] - focus.x;
         const dz = set.pos[i * 2 + 1] - focus.z;
         if (dx * dx + dz * dz > R2) continue;
-        set.src.getMatrixAt(i, tmp);
-        set.proxy.setMatrixAt(n++, tmp);
+        dst.set(set.mats.subarray(i * 16, i * 16 + 16), n * 16);
+        n++;
       }
       set.proxy.count = n;
       set.proxy.instanceMatrix.needsUpdate = true;
       set.proxy.visible = n > 0;
       set.proxy.computeBoundingSphere();
+    }
+    // LOD drzew
+    const L2 = Q.treeLodRadius ** 2;
+    for (const set of this.lodSets) {
+      let nf = 0;
+      let nl = 0;
+      const N = set.pos.length / 2;
+      const fm = set.full.instanceMatrix.array as Float32Array;
+      const lm = set.lod.instanceMatrix.array as Float32Array;
+      const fc = set.full.instanceColor!.array as Float32Array;
+      const lc = set.lod.instanceColor!.array as Float32Array;
+      for (let i = 0; i < N; i++) {
+        const dx = set.pos[i * 2] - focus.x;
+        const dz = set.pos[i * 2 + 1] - focus.z;
+        const m = set.mats.subarray(i * 16, i * 16 + 16);
+        const c = set.cols.subarray(i * 3, i * 3 + 3);
+        if (dx * dx + dz * dz <= L2) {
+          fm.set(m, nf * 16);
+          fc.set(c, nf * 3);
+          nf++;
+        } else {
+          lm.set(m, nl * 16);
+          lc.set(c, nl * 3);
+          nl++;
+        }
+      }
+      for (const [im, n] of [
+        [set.full, nf],
+        [set.lod, nl],
+      ] as const) {
+        im.count = n;
+        im.visible = n > 0;
+        im.instanceMatrix.needsUpdate = true;
+        im.instanceColor!.needsUpdate = true;
+        im.computeBoundingSphere();
+      }
     }
   }
 
@@ -609,7 +655,7 @@ export class World {
           pos[i * 2 + 1] = it.z;
         });
         this.group.add(proxy);
-        this.shadowSets.push({ src: im, proxy, pos });
+        this.shadowSets.push({ mats: new Float32Array(im.instanceMatrix.array), proxy, pos });
       }
     });
     return out;
@@ -658,6 +704,28 @@ export class World {
     };
     m.customProgramCacheKey = () => `veg-${sway}-${doubleSided}-${m.map ? 'map' : ''}`;
     return m;
+  }
+
+  /** Para LOD: te same instancje w pełnym i lżejszym modelu; podział wg odległości w updateShadowProxies. */
+  private lodPair(full: THREE.InstancedMesh, lod: THREE.InstancedMesh, list: Inst[]): void {
+    const pos = new Float32Array(list.length * 2);
+    list.forEach((it, i) => {
+      pos[i * 2] = it.x;
+      pos[i * 2 + 1] = it.z;
+    });
+    for (const im of [full, lod]) {
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      im.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    }
+    this.lodSets.push({
+      full,
+      lod,
+      mats: new Float32Array(full.instanceMatrix.array),
+      cols: new Float32Array(full.instanceColor!.array),
+      pos,
+    });
+    lod.count = 0;
+    lod.visible = false;
   }
 
   private key(x: number, z: number, cell: number): string {
@@ -808,7 +876,9 @@ export class World {
       far.push({ x, y: this.terrainAt(x, z) - 0.3, z, rotY: rng.range(0, 6.28), s, sy: rng.range(0.9, 1.3), tint: rng.range(0.75, 1.1) });
     }
 
-    this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false, shadowKind: 'spruceMid' });
+    const [nearFull] = this.instanced('spruceNear', near, { cast: true, sway: 0.0009, name: 'spruce_near', reflect: false, shadowKind: 'spruceMid' });
+    const [nearLod] = this.instanced('spruceMid', near, { cast: false, sway: 0.0009, name: 'spruce_near_lod', reflect: false });
+    if (nearFull && nearLod) this.lodPair(nearFull, nearLod, near);
     // w odbiciu wystarczy uproszczony świerk (mniej trójkątów w drugim przebiegu)
     for (const im of this.instanced('spruceMid', near, { cast: false, name: 'spruce_near_reflect' })) im.layers.set(REFLECT_LAYER);
     this.instanced('spruceMid', midCast, { cast: true, sway: 0.0009, name: 'spruce_mid_cast' });

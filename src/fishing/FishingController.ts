@@ -15,7 +15,7 @@ import type { Player } from '../player/Player';
 import type { AssetRegistry } from '../assets/AssetRegistry';
 import { PIVOTS, pivot } from '../assets/AssetRegistry';
 import { Bobber, type BobberEnv } from './Bobber';
-import { VerletLine, LineRenderer } from './VerletLine';
+import { VerletLine, LineRenderer, type LineEnv } from './VerletLine';
 import { RodController } from './RodController';
 import { TensionModel, slackEscapeProbability } from './tension';
 import { FightFish, type FishEnv } from './FightFish';
@@ -61,8 +61,12 @@ export class FishingController {
   readonly fsm: StateMachine<FState>;
   readonly bobber: Bobber;
   readonly line = new VerletLine();
-  readonly lineRenderer = new LineRenderer(CFG.line.points);
-  readonly dropperRenderer = new LineRenderer(2, 0xdddddd, 0.55);
+  readonly lineRenderer = new LineRenderer(CFG.line.points, 0xf2efe6, 0.85);
+  readonly dropperRenderer = new LineRenderer(2, 0xdddddd, 0.55, 1.2);
+  /** punkty żyłki do narysowania (interpolowane) */
+  private lineDraw = new Float32Array(CFG.line.points * 3);
+  private tipDraw = new THREE.Vector3();
+  private endDraw = new THREE.Vector3();
   readonly tension: TensionModel;
   rod: RodController | null = null;
   floatObj: THREE.Object3D;
@@ -110,6 +114,11 @@ export class FishingController {
   onSurge: () => void = () => {};
 
   readonly bobberEnv: BobberEnv;
+  /** otoczenie żyłki (wizualne – przybliżona tafla, bez alokacji co krok) */
+  private readonly lineEnv: LineEnv;
+  /** atrakcyjność łowiska liczona ponownie dopiero po przesunięciu spławika */
+  private attrX = 1e9;
+  private attrZ = 1e9;
   readonly fishEnv: FishEnv;
 
   constructor(
@@ -150,6 +159,10 @@ export class FishingController {
       waterY: (x, z) => world.waterY(x, z),
       terrainY: (x, z) => world.terrainAt(x, z),
       depth: (x, z) => world.depthAt(x, z),
+    };
+    this.lineEnv = {
+      waterY: (x, z) => world.waterYFast(x, z),
+      terrainY: (x, z) => world.terrainAt(x, z),
     };
     this.fishEnv = {
       depth: (x, z) => world.depthAt(x, z),
@@ -235,14 +248,14 @@ export class FishingController {
         if (!this.gear.baitOn) return 'Brak robaka – przytrzymaj [LPM], by zwinąć, potem nabij nowego';
         if (this.bobber.mode === 'land') return 'Zestaw na brzegu – zwiń [LPM]';
         if (this.reeling) return `Zwijanie… ${fmt(this.L, 1)} m`;
-        return this.bobber.lying ? 'Przynęta leży na dnie – płytko (branie rzadziej) · przytrzymaj [LPM], by zwinąć' : 'Obserwuj spławik · [PPM] zatnij · przytrzymaj [LPM], by zwinąć';
+        return this.bobber.lying ? 'Przynęta leży na dnie – płytko (branie rzadziej) · przytrzymaj [LPM], by zwinąć' : 'Obserwuj spławik – gdy zniknie pod wodą, kliknij [LPM] · przytrzymaj [LPM], by zwinąć';
       case 'NIBBLE':
-        return 'Coś skubie… czekaj, jeszcze nie zacinaj';
+        return 'Coś skubie… czekaj, aż spławik zniknie pod wodą';
       case 'BITE':
-        return 'BIERZE! Zatnij [PPM]!';
+        return 'BIERZE! Zatnij: [LPM] / [PPM] / [Spacja]';
       case 'FIGHT':
         return this.canLand
-          ? '[E] Wyciągnij rybę'
+          ? '[E] / [Spacja] Wyciągnij rybę!'
           : 'Hol: [LPM] zwijaj · mysz = kąt wędki · kółko = hamulec';
       case 'LANDING':
         return 'Wyciągasz rybę…';
@@ -482,8 +495,12 @@ export class FishingController {
     this.fsm.go('NIBBLE');
   }
 
-  private strikeRequested(): boolean {
+  /** Zacięcie: PPM albo Spacja zawsze; LPM (klik) w chwili brania; szarpnięcie myszą w dół w oknie brania. */
+  private strikeRequested(lmbPressed: boolean, lmbHeld: boolean): boolean {
     const rmb = this.input.consumeMousePress(2);
+    const space = this.input.consumePress('Space');
+    // LPM w chwili brania (klik albo trzymany – np. gracz właśnie zwijał) = zacięcie
+    const lmb = (lmbPressed || lmbHeld) && this.fsm.is('BITE');
     if (this.strikeCooldown > 0) return false;
     let jerk = false;
     // szarpnięcie myszą liczy się TYLKO w oknie brania (zwykłe rozglądanie się przy skubaniu nie płoszy ryby)
@@ -491,7 +508,7 @@ export class FishingController {
       jerk = true;
       this.input.clearMotionHistory();
     }
-    if (rmb || jerk) {
+    if (rmb || space || lmb || jerk) {
       this.strikeCooldown = 0.5;
       return true;
     }
@@ -749,7 +766,7 @@ export class FishingController {
     }
 
     // zacięcie
-    if (this.fsm.is('WAITING', 'NIBBLE', 'BITE') && this.bobber.mode === 'water' && this.strikeRequested()) this.doStrike();
+    if (this.fsm.is('WAITING', 'NIBBLE', 'BITE') && this.bobber.mode === 'water' && this.strikeRequested(lmbPressed, lmbHeld)) this.doStrike();
     else if (!this.fsm.is('NIBBLE', 'BITE', 'WAITING')) this.input.consumeMousePress(2);
 
     // animacje górnej części ciała
@@ -804,7 +821,8 @@ export class FishingController {
 
     // ------- żyłka wizualna -------
     const end = tmpB.copy(this.bobber.pos);
-    this.line.update(dt, this.lastTip, end, Math.max(this.L, 0.3), { waterY: this.bobberEnv.waterY, terrainY: this.bobberEnv.terrainY });
+    this.line.surfaceClamp = !this.fish;
+    this.line.update(dt, this.lastTip, end, Math.max(this.L, 0.3), this.lineEnv);
 
     // czas w stanie + timeouty
     this.fsm.update(dt);
@@ -820,7 +838,7 @@ export class FishingController {
   private updateRigInWater(dt: number, lmbHeld: boolean): void {
     const st = this.fsm.state;
     const b = this.bobber;
-    this.reeling = lmbHeld;
+    this.reeling = lmbHeld && st !== 'BITE';
 
     // --- branie: sygnał od ryby ---
     if (st === 'NIBBLE' && this.pattern) b.signal = this.pattern.nibble(this.fsm.time);
@@ -829,9 +847,12 @@ export class FishingController {
 
     b.dragged = false;
     if (!lmbHeld) this.reelHeld = 0;
-    if (lmbHeld) {
-      if (st === 'NIBBLE' || st === 'BITE') {
-        this.msg('Ruch zestawu spłoszył rybę', 'warn');
+    // w chwili brania LPM = zacięcie (sprawdzane zaraz potem) – nie zwijamy
+    const reel = lmbHeld && st !== 'BITE';
+    if (reel) {
+      // przy skubaniu płoszy dopiero dłuższe zwijanie (klik/krótkie przytrzymanie nie)
+      if (st === 'NIBBLE' && this.reelHeld + dt > CFG.bite.reelSpookTime) {
+        this.msg('Zwijanie spłoszyło rybę', 'warn');
         this.fsm.go('WAITING');
       }
       this.reelHeld += dt;
@@ -882,8 +903,11 @@ export class FishingController {
     if (st === 'SETTLING' && b.settled) this.fsm.go('WAITING');
     if (this.fsm.is('WAITING', 'SETTLING') && b.mode === 'water' && !b.dragged) this.tSinceSettle += dt;
     if (this.fsm.is('WAITING') && b.mode === 'water' && !b.dragged && this.gear.baitOn && this.spookCooldown <= 0 && b.settled) {
-      const env = this.spotEnv(b.pos.x, b.pos.z);
-      this.attraction = spotAttraction(env);
+      if (Math.hypot(b.pos.x - this.attrX, b.pos.z - this.attrZ) > 0.3) {
+        this.attraction = spotAttraction(this.spotEnv(b.pos.x, b.pos.z));
+        this.attrX = b.pos.x;
+        this.attrZ = b.pos.z;
+      }
       const factor = (b.lying ? CFG.bite.lyingFloatFactor : 1) * (CFG.bite.fastMode ? CFG.bite.fastMultiplier : 1);
       const rate = biteRate(this.tSinceSettle, this.attraction, CFG.bite, factor);
       if (poissonFires(this.rng, rate, dt)) this.startNibble();
@@ -961,7 +985,7 @@ export class FishingController {
     // wyciągnięcie
     tmpB.set(fish.pos.x - tmpA.x, 0, fish.pos.z - tmpA.z);
     this.canLand = tmpB.length() < CFG.landing.maxDistance && fish.stamina < CFG.landing.maxStamina;
-    if (this.canLand && this.input.consumePress('KeyE')) this.fsm.go('LANDING');
+    if (this.canLand && (this.input.consumePress('KeyE') || this.input.consumePress('Space'))) this.fsm.go('LANDING');
   }
 
   // ------------------------------------------------------------------
@@ -985,7 +1009,11 @@ export class FishingController {
       if (this.wormOnHook) this.wormOnHook.visible = this.gear.baitOn;
       this.dropperRenderer.setSegment(tmpA, this.hookObj.position);
     }
-    this.lineRenderer.set(this.line.pos);
+    // żyłka: interpolowana, przypięta do wyrenderowanej szczytówki i spławika
+    this.rod.tipWorld(this.tipDraw);
+    this.endDraw.lerpVectors(b.prevPos, b.pos, alpha);
+    this.line.renderInto(this.lineDraw, alpha, this.tipDraw, this.line.endPinned ? this.endDraw : null);
+    this.lineRenderer.set(this.lineDraw);
 
     // ryba
     if (this.fishObj && this.fsm.is('CAUGHT')) {

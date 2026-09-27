@@ -10,6 +10,17 @@ export type CamMode = 'follow' | 'fight' | 'external';
  * tryb holu (kadruje wędkę i rybę, trzęsienie przy zrywach), płynne przejście z kamery cutscenki.
  */
 export class CameraRig {
+  private v = {
+    target: new THREE.Vector3(),
+    lookAt: new THREE.Vector3(),
+    right: new THREE.Vector3(),
+    pivot: new THREE.Vector3(),
+    f: new THREE.Vector3(),
+    p: new THREE.Vector3(),
+    toFish: new THREE.Vector3(),
+    bpos: new THREE.Vector3(),
+    bquat: new THREE.Quaternion(),
+  };
   yaw = Math.PI;
   pitch = 0.18;
   mode: CamMode = 'external';
@@ -60,18 +71,19 @@ export class CameraRig {
       this.pitch = clamp(this.pitch + look.dy * C.sensitivity, C.pitchMin, C.pitchMax);
     }
 
-    const target = new THREE.Vector3();
-    const lookAt = new THREE.Vector3();
+    // wektory robocze (bez alokacji co klatkę)
+    const target = this.v.target;
+    const lookAt = this.v.lookAt;
     if (this.mode === 'follow') {
       this.fightInit = false;
-      const right = new THREE.Vector3(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
-      const pivot = playerPos.clone().add(new THREE.Vector3(0, C.height, 0)).addScaledVector(right, C.shoulder * (this.zoom !== null ? 0.6 : 1));
-      const f = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), -Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
+      const right = this.v.right.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
+      const pivot = this.v.pivot.copy(playerPos).setY(playerPos.y + C.height).addScaledVector(right, C.shoulder * (this.zoom !== null ? 0.6 : 1));
+      const f = this.v.f.set(Math.sin(this.yaw) * Math.cos(this.pitch), -Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
       const want = this.zoom ?? C.distance;
       // kolizja ramienia z terenem i wodą
       let allowed = want;
       const N = 14;
-      const p = new THREE.Vector3();
+      const p = this.v.p;
       for (let i = 1; i <= N; i++) {
         const d = (want * i) / N;
         p.copy(pivot).addScaledVector(f, -d);
@@ -92,23 +104,23 @@ export class CameraRig {
       this.smLook.copy(lookAt);
     } else {
       // hol: kadr na wędkę i miejsce ryby
-      const toFish = this.fightFocus.clone().sub(playerPos);
+      const toFish = this.v.toFish.copy(this.fightFocus).sub(playerPos);
       toFish.y = 0;
       const dist = toFish.length();
       if (dist > 0.01) toFish.divideScalar(dist);
       else toFish.copy(this.forwardFlat);
-      const right = new THREE.Vector3(-toFish.z, 0, toFish.x);
+      const right = this.v.right.set(-toFish.z, 0, toFish.x);
       target
         .copy(playerPos)
         .addScaledVector(toFish, -C.fightDistance * (0.75 + 0.25 * smoothstep(3, 25, dist)))
-        .addScaledVector(right, -2.4)
-        .add(new THREE.Vector3(0, C.fightHeight, 0));
+        .addScaledVector(right, -2.4);
+      target.y += C.fightHeight;
       const g = this.world.terrainAt(target.x, target.z) + 0.4;
       if (target.y < g) target.y = g;
-      lookAt.copy(playerPos).add(new THREE.Vector3(0, 1.4, 0)).lerp(this.fightFocus, 0.55);
+      lookAt.copy(playerPos).setY(playerPos.y + 1.4).lerp(this.fightFocus, 0.55);
       if (!this.fightInit) {
         this.smPos.copy(this.camera.position);
-        this.smLook.copy(playerPos).add(new THREE.Vector3(0, 1.4, 0)).addScaledVector(this.forwardFlat, 6);
+        this.smLook.copy(playerPos).setY(playerPos.y + 1.4).addScaledVector(this.forwardFlat, 6);
         this.fightInit = true;
       }
       this.smPos.lerp(target, 1 - Math.exp(-3 * dt));
@@ -133,8 +145,8 @@ export class CameraRig {
     if (this.blendFrom) {
       this.blendT += dt / this.blendDur;
       const t = smoothstep(0, 1, Math.min(1, this.blendT));
-      const pos = cam.position.clone();
-      const quat = cam.quaternion.clone();
+      const pos = this.v.bpos.copy(cam.position);
+      const quat = this.v.bquat.copy(cam.quaternion);
       cam.position.lerpVectors(this.blendFrom.pos, pos, t);
       cam.quaternion.slerpQuaternions(this.blendFrom.quat, quat, t);
       if (this.blendT >= 1) this.blendFrom = null;

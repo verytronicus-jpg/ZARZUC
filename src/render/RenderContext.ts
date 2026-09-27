@@ -5,7 +5,7 @@ import { DEG } from '../core/math';
 import { SkyDome } from './SkyDome';
 import { PostFX } from './PostFX';
 import { PlanarReflection } from './PlanarReflection';
-import { FX_LAYER, REFLECT_LAYER, SHADOW_LAYER, WATER_LAYER } from './layers';
+import { FX_LAYER, PIP_LAYER, REFLECT_LAYER, SHADOW_LAYER, WATER_LAYER } from './layers';
 import type { Water } from '../world/Water';
 
 export type Quality = 'high' | 'low';
@@ -36,6 +36,8 @@ export class RenderContext {
   /** mnożniki światła otoczenia i ekspozycji (intro: ciemne wnętrze → oślepienie → norma) */
   private lightScale = { ambient: 1, exposure: 1 };
   private size = new THREE.Vector2();
+  /** wołane, gdy przy najniższej rozdzielczości klatki nadal są za wolne (Game przełącza preset) */
+  onTooSlow: (() => void) | null = null;
   /** dynamiczna rozdzielczość (mnożnik pixel ratio) */
   private dyn = { scale: 1, acc: 0, n: 0, last: 0, slow: 0, fast: 0, blockUntil: 0, justRaised: false };
 
@@ -66,6 +68,7 @@ export class RenderContext {
 
     this.sky = new SkyDome();
     this.sky.mesh.layers.enable(REFLECT_LAYER);
+    this.sky.mesh.layers.enable(PIP_LAYER);
     this.scene.add(this.sky.mesh);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.sky.onLoad = () => this.updateEnvironment();
@@ -125,6 +128,13 @@ export class RenderContext {
       d.blockUntil = now + D.cooldown * 1000;
       d.slow = 0;
     } else if (d.slow >= 2) {
+      if (s <= D.minScale + 1e-3 && this.quality === 'high' && D.autoLowPreset) {
+        // nawet najniższa rozdzielczość nie wystarcza → lżejszy preset (raz), od pełnej rozdzielczości
+        d.slow = 0;
+        d.scale = 1;
+        this.onTooSlow?.();
+        return;
+      }
       s = Math.max(D.minScale, s - D.step);
       d.slow = 0;
     } else if (d.fast >= D.upWindows && s < 1 && now > d.blockUntil) {
@@ -283,8 +293,8 @@ export class RenderContext {
   }
 
   /**
-   * Dodatkowy widok bezpośrednio na ekran (podgląd spławika): bez post-processingu, woda bez refrakcji
-   * (odbicie panoramy), cienie z bieżącej klatki.
+   * Dodatkowy widok bezpośrednio na ekran (podgląd spławika): tylko warstwa PIP (spławik, żyłka, ryba, niebo),
+   * woda i efekty na wodzie – bez drzew i terenu, bez post-processingu; woda odbija panoramę.
    */
   renderViewport(cam: THREE.PerspectiveCamera, x: number, y: number, w: number, h: number): void {
     const r = this.renderer;
@@ -294,7 +304,7 @@ export class RenderContext {
       wu.uReflectOn.value = 0;
       this.bindPanorama(wu);
     }
-    cam.layers.set(0);
+    cam.layers.set(PIP_LAYER);
     cam.layers.enable(WATER_LAYER);
     cam.layers.enable(FX_LAYER);
     this.sky.follow(cam);
