@@ -520,10 +520,10 @@ export const CFG = {
 
   reel: {
     /** zwijanie w holu [m/s] */
-    speed: 0.8,
+    speed: 1.2,
     /** zwijanie pustego zestawu (bez ryby) [m/s] i czas rozpędu korbki [s] */
-    retrieveSpeed: 3.2,
-    retrieveRamp: 0.5,
+    retrieveSpeed: 7,
+    retrieveRamp: 0.15,
     dragDefaultKgf: 3,
     dragMinKgf: 0.5,
     dragMaxKgf: 6,

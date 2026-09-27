@@ -98,11 +98,11 @@ describe('hamulec', () => {
     expect(m.L).toBeGreaterThan(L1);
   });
 
-  it('bez poślizgu zwijanie skraca żyłkę z prędkością 0,8 m/s', () => {
+  it('bez poślizgu zwijanie skraca żyłkę z prędkością CFG.reel.speed', () => {
     const m = new TensionModel(params(), 5 * KGF);
     m.reset(20, 15); // luz 5 m
     for (let i = 0; i < 240; i++) m.step(15, DT, true);
-    expect(m.L).toBeCloseTo(20 - 0.8 * 2, 2);
+    expect(m.L).toBeCloseTo(20 - CFG.reel.speed * 2, 2);
   });
 
   it('ostry zryw chwilowo przebija hamulec (bezwładność szpuli)', () => {
