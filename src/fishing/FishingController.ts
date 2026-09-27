@@ -452,7 +452,7 @@ export class FishingController {
   }
 
   private spotEnv(x: number, z: number): SpotEnv {
-    return { depth: this.world.depthAt(x, z), reedDist: this.world.reedDistance(x, z), pierDist: this.world.pierDistance(x, z) };
+    return { depth: this.world.depthAt(x, z), reedDist: this.world.reedDistance(x, z), structDist: this.world.structureDistance(x, z) };
   }
 
   /** Wymuszenie brania (debug). */

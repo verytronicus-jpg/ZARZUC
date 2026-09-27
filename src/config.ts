@@ -31,9 +31,9 @@ export interface SpeciesConfig {
     depthMax: number;
     /** szerokość rampy przejścia na granicach zakresu [m] */
     depthRamp: number;
-    /** premia za bliskość struktury (trzciny / pomost) */
+    /** premia za bliskość trzcin i struktur (pomost, zwalone drzewo, kamienie cypla) */
     reedBonus: number;
-    pierBonus: number;
+    structureBonus: number;
     /** odległość [m], na której premia za strukturę spada do zera */
     structureRange: number;
     /** dopasowanie poza preferowaną głębokością */
@@ -88,30 +88,60 @@ export const CFG = {
 
   render: {
     pixelRatioMax: 1.75,
-    exposure: 0.72,
+    exposure: 0.78,
     shadowMapSize: 2048,
     shadowBox: 40,
-    fogColor: 0xd4c6ae,
-    fogNear: 60,
-    fogFar: 290,
+    /** mgła: kolor ciepłej porannej mgiełki (dopasowany do dołu panoramy) */
+    fogColor: 0xd8b49a,
+    fogNear: 70,
+    fogFar: 720,
+    cameraFar: 3000,
+    /** cienie roślinności liczone tylko w tym promieniu od gracza [m], odświeżane co shadowProxyStep [m] */
+    shadowProxyRadius: 55,
+    shadowProxyStep: 4,
   },
 
+  /** słońce: nisko nad górami za jeziorem (północ = azymut 180°, wschód = 90°) */
   sun: {
-    elevationDeg: 10,
-    azimuthDeg: 115,
-    intensity: 3.4,
-    color: 0xffd2a0,
-    hemiSky: 0xbcd3ec,
-    hemiGround: 0x5a5140,
-    hemiIntensity: 1.5,
-    turbidity: 4,
-    rayleigh: 1.6,
-    mieCoefficient: 0.004,
-    mieDirectionalG: 0.86,
+    elevationDeg: 12,
+    azimuthDeg: 150,
+    intensity: 3.2,
+    color: 0xffc38a,
+    hemiSky: 0xbac6e4,
+    hemiGround: 0x6a5a40,
+    hemiIntensity: 1.35,
+    /** ciepłe światło wypełniające od strony chatki (bez cieni) – malarskie doświetlenie frontów */
+    fillColor: 0xffd2a8,
+    fillIntensity: 0.7,
+    fillAzimuthDeg: -20,
+    fillElevationDeg: 25,
+  },
+
+  /** niebo i panorama gór (public/textures/panorama.jpg z scripts/prepare_images.py) */
+  sky: {
+    panoramaUrl: 'textures/panorama.jpg',
+    /** łuk poziomy [°] zajmowany przez oryginalny obraz (reszta 360° to lustro bez słońca) */
+    panoramaArcDeg: 150,
+    /** proporcje oryginału (wysokość / szerokość) */
+    panoramaAspect: 821 / 1916,
+    /** ściśnięcie w pionie (góry niższe niż w proporcjach obrazu) */
+    panoramaSquash: 1.5,
+    /** położenie słońca na obrazie (u, v od lewego górnego rogu) */
+    panoramaSunU: 0.535,
+    panoramaSunV: 0.6456,
+    /** górna część panoramy wtapia się w gradient */
+    topFade: 0.14,
+    zenith: 0x6d80bb,
+    panoramaTop: 0x8a97c8,
+    horizon: 0xf2b27a,
+    bottom: 0xcfa88c,
+    sunBoost: 6,
+    brightness: 1.0,
   },
 
   world: {
-    /** półosie elipsy jeziora [m] (120 × 80) */
+    // ---------- jezioro: główna misa (tu się łowi) ----------
+    /** półosie elipsy jeziora [m] (120 × 80), środek w (0,0); +z = południe (chatka), −z = północ (góry) */
     lakeRx: 60,
     lakeRz: 40,
     maxDepth: 4.2,
@@ -119,60 +149,192 @@ export const CFG = {
     depthExponent: 1.3,
     /** jaka część promienia jest skarpą do maksymalnej głębi */
     depthSpan: 0.75,
-    /** dołek (karpiowisko) */
-    holeX: 16,
-    holeZ: -6,
-    holeRadius: 14,
-    holeDepth: 0.7,
-    /** łuki trzcin (kąt od środka jeziora; 90° = +z = południe, pomost) */
+    /** dołek (karpiowisko) – w zasięgu rzutu z końca pomostu */
+    holeX: 10,
+    holeZ: 5,
+    holeRadius: 12,
+    holeDepth: 0.8,
+    /**
+     * Kształt brzegu: wybrzuszenia (amount > 0 → zatoczka) i wcięcia (amount < 0 → cypel).
+     * Kąt od środka jeziora: 0° = +x (wschód), 90° = +z (południe, pomost), −90° = północ.
+     */
+    shoreBumps: [
+      { angleDeg: 52, amount: 0.17, widthDeg: 15 },
+      { angleDeg: 172, amount: 0.15, widthDeg: 17 },
+      { angleDeg: -14, amount: -0.34, widthDeg: 6.5 },
+    ],
+    /** łuki trzcin = dwie płytkie zatoczki (SE przy pomoście i zachodnia) */
     reedArcs: [
-      { angleDeg: 180, halfWidthDeg: 30 },
-      { angleDeg: -55, halfWidthDeg: 18 },
+      { angleDeg: 52, halfWidthDeg: 21 },
+      { angleDeg: 172, halfWidthDeg: 23 },
     ],
     /** spłycenie przy trzcinach (0..1) */
-    reedShallowing: 0.62,
-    reedCount: 1400,
-    treeCount: 150,
-    rockCount: 60,
-    bankHeight: 0.55,
-    terrainStep: 1.6,
-    terrainMinX: -170,
-    terrainMaxX: 170,
-    terrainMinZ: -150,
-    terrainMaxZ: 230,
-    /** granice mapy dla gracza (elipsa) */
-    boundsCx: 0,
-    boundsCz: 12,
-    boundsRx: 92,
-    boundsRz: 78,
-    /** gracz nie wejdzie do wody głębszej niż to */
-    maxWadeDepth: 0.25,
-    pierAngleDeg: 80,
+    reedShallowing: 0.72,
+    /** skalisty cypel (środek pola kamieni w wodzie i na lądzie) */
+    pointX: 42,
+    pointZ: -7,
+    pointRadius: 8,
+    /** kamienie cypla (w wodzie i na brzegu) */
+    pointRockCount: 34,
+    /** podniesienie terenu cypla ponad lustro [m] */
+    pointHeight: 1.3,
+    /** zwalone drzewo: od korzeni (na lądzie) do czubka (w wodzie) */
+    logX0: 63,
+    logZ0: 5,
+    logX1: 47,
+    logZ1: 12,
+    logRadius: 0.38,
+
+    // ---------- przedłużenie jeziora na północ (tylko widok, w stronę gór) ----------
+    farLakeX: -6,
+    farLakeZ: -215,
+    farLakeRx: 78,
+    farLakeRz: 180,
+    farLakeDepth: 5,
+    /** miękkość połączenia misy z przedłużeniem (smooth-min) */
+    lakeBlend: 0.14,
+    /** zalesione wyspy / cyple w oddali (ląd w wodzie) */
+    islands: [
+      { x: -52, z: -118, r: 30 },
+      { x: 40, z: -190, r: 20 },
+      { x: -25, z: -300, r: 34 },
+    ],
+
+    // ---------- teren ----------
+    bankHeight: 0.5,
+    /** wznoszenie się terenu z odległością od brzegu d [m]: h = bank + a·d + b·d² */
+    riseLinear: 0.1,
+    riseQuad: 0.0006,
+    /** pagórki (amplituda rośnie z odległością) */
+    hillAmp: 0.9,
+    hillAmpFar: 0.06,
+    /** siatka terenu: gęsta w obszarze gry, rzadsza na zewnątrz (rośnie geometrycznie) */
+    terrainStep: 1.0,
+    terrainFineMinX: -115,
+    terrainFineMaxX: 115,
+    terrainFineMinZ: -70,
+    terrainFineMaxZ: 140,
+    terrainGrowth: 1.22,
+    terrainMaxStep: 40,
+    terrainExtent: 1100,
+
+    // ---------- chatka i ścieżka ----------
+    /** środek chatki (podstawa) i wysokość polany */
+    cabinX: -20,
+    cabinZ: 86,
+    cabinGround: 5.2,
+    /** polana: promień wypłaszczenia i przejścia [m] */
+    clearingRadius: 10,
+    clearingFade: 9,
+    /** chatka: szerokość (front), głębokość, ganek */
+    cabinWidth: 6.2,
+    cabinDepth: 5.0,
+    porchDepth: 2.6,
+    floorHeight: 0.5,
+    /** start gracza: odległość od ściany frontowej na ganku [m] */
+    porchStartDepth: 1.05,
+    /**
+     * Ścieżka (punkty kontrolne, łamana wygładzana CatmullRom) od stopni ganku do nasady pomostu.
+     * Pierwszy i ostatni punkt liczone z położenia chatki i pomostu.
+     */
+    pathPoints: [
+      [-12.5, 74.5],
+      [-6.5, 68],
+      [-9, 60.5],
+      [-3.5, 54],
+      [-4.5, 47.5],
+      [-0.5, 43.5],
+    ] as Array<[number, number]>,
+    pathWidth: 1.5,
+    /** szerokość wypłaszczenia terenu w poprzek ścieżki [m] */
+    pathFlatten: 3.2,
+    /** płotek wzdłuż ścieżki: od–do [m drogi od ganku], odsunięcie w bok (ujemne = po prawej idąc w dół) */
+    fenceStart: 12,
+    fenceEnd: 34,
+    fenceOffset: -1.35,
+    /** duże głazy przy ścieżce (dx, dz względem stopni ganku, skala) */
+    pathBoulders: [
+      [-4.2, -7, 1.3],
+      [3.8, -15, 1.0],
+      [-4.6, -24, 1.5],
+      [5.2, -33, 1.1],
+      [-5.5, -40, 0.9],
+    ] as Array<[number, number, number]>,
+
+    // ---------- pomost ----------
+    pierAngleDeg: 90,
     pierLengthWater: 12,
     pierLengthLand: 3,
     pierWidth: 2.2,
     pierDeckHeight: 0.45,
-    /** start gracza (K1: przy nasadzie pomostu), yaw 0 = +Z */
-    startX: 10.3,
-    startZ: 44.5,
-    startYaw: Math.PI,
+    /** łódka przy pomoście (przesunięcie od końca pomostu, zanurzenie) */
+    boatOffsetX: 0.95,
+    boatOffsetZ: 2.6,
+    boatYawDeg: 6,
+    boatDraft: 0.13,
+
+    // ---------- roślinność ----------
+    /** wierzba płacząca przy brzegu zachodniej zatoczki */
+    willows: [[-63, 22]] as Array<[number, number]>,
+    reedCount: 1200,
+    cattailCount: 160,
+    lilyCount: 90,
+    spruceCount: 2400,
+    spruceNearRadius: 88,
+    pineCount: 40,
+    birchCount: 26,
+    willowCount: 3,
+    bushCount: 260,
+    fernCount: 360,
+    rockCount: 90,
+    stumpCount: 22,
+    farTreeCount: 9000,
+    grassCount: 5200,
+
+    // ---------- gracz ----------
+    /** obszar, po którym chodzi gracz (wielokąt x,z); poza nim gęsty las */
+    bounds: [
+      [74, -26],
+      [20, -30],
+      [-40, -26],
+      [-86, -12],
+      [-88, 20],
+      [-58, 46],
+      [-36, 62],
+      [-40, 84],
+      [-32, 100],
+      [-8, 100],
+      [0, 84],
+      [12, 60],
+      [40, 52],
+      [76, 26],
+      [80, -6],
+    ] as Array<[number, number]>,
+    /** gracz nie wejdzie do wody głębszej niż to (po kostki) */
+    maxWadeDepth: 0.25,
   },
 
   water: {
     level: 0,
+    /** siatka wody: gęsta w misie (gridStep), rzadsza w przedłużeniu na północ */
     gridStep: 0.9,
-    margin: 14,
+    gridGrowth: 1.2,
+    gridMaxStep: 12,
+    fineMinX: -82,
+    fineMaxX: 82,
+    fineMinZ: -52,
+    fineMaxZ: 52,
+    extentX: 105,
+    minZ: -420,
+    maxZ: 60,
     waves: [
       { dirDeg: 20, wavelength: 7.5, amplitude: 0.028, steepness: 0.35 },
       { dirDeg: 65, wavelength: 4.4, amplitude: 0.018, steepness: 0.35 },
       { dirDeg: -15, wavelength: 2.7, amplitude: 0.011, steepness: 0.3 },
       { dirDeg: 110, wavelength: 1.6, amplitude: 0.006, steepness: 0.25 },
     ],
-    shallowColor: 0x5f8a6e,
-    deepColor: 0x163a3f,
-    /** maks. głębokość w teksturze mapy głębokości */
-    depthTexMax: 5,
-    depthTexSize: 256,
+    shallowColor: 0x5fb3a3,
+    deepColor: 0x145060,
     /** widoczność pod wodą: tempo zaniku koloru z głębokością [1/m] */
     underwaterFade: 0.9,
     /** gęstość wody [kg/m³] */
@@ -429,6 +591,18 @@ export const CFG = {
     endPitch: 0.22,
   },
 
+  /** dym z komina chatki */
+  smoke: {
+    count: 36,
+    lifetime: 9,
+    rise: 9,
+    size: 1.6,
+    opacity: 0.32,
+    color: 0xe8ddd2,
+    driftX: 0.6,
+    driftZ: 0.35,
+  },
+
   audio: {
     master: 0.8,
     ambient: 0.35,
@@ -437,41 +611,43 @@ export const CFG = {
 
   debug: {
     timeScale: 1,
+    /** tylko do testów automatycznych: pomija render sceny (logika działa szybciej w SwiftShaderze) */
+    skipRender: false,
   },
 
   species: [
     {
       id: 'ploc', name: 'Płoć', chance: 0.35, minCm: 12, maxCm: 32, a: 0.0103, b: 3.08, strength: 1.0,
       lengthSkew: 2.2, nibblerMaxCm: 18,
-      zone: { depthMin: 0.4, depthMax: 2.6, depthRamp: 0.8, reedBonus: 0.15, pierBonus: 0.1, structureRange: 10, outside: 0.45, inside: 1 },
+      zone: { depthMin: 0.4, depthMax: 2.6, depthRamp: 0.8, reedBonus: 0.15, structureBonus: 0.1, structureRange: 10, outside: 0.45, inside: 1 },
       bite: { window: 0.5 },
       fight: { cruise: 0.5, peak: 1.0, surgeMin: 1.0, surgeMax: 1.6, pauseMin: 1.5, pauseMax: 3.5, headshake: 0.15, headshakeHz: 5, dragMul: 0.8, endurance: 7, seekDeep: 0.3, seekReeds: 0.4, circling: 0.2 },
     },
     {
       id: 'okon', name: 'Okoń', chance: 0.25, minCm: 12, maxCm: 38, a: 0.0089, b: 3.13, strength: 1.2,
       lengthSkew: 2.0, nibblerMaxCm: 17,
-      zone: { depthMin: 0.8, depthMax: 3.5, depthRamp: 0.8, reedBonus: 1.0, pierBonus: 1.3, structureRange: 11, outside: 0.45, inside: 1 },
+      zone: { depthMin: 0.8, depthMax: 3.5, depthRamp: 0.8, reedBonus: 1.0, structureBonus: 1.3, structureRange: 11, outside: 0.45, inside: 1 },
       bite: { window: 0.8 },
       fight: { cruise: 0.45, peak: 1.0, surgeMin: 1.0, surgeMax: 1.5, pauseMin: 1.2, pauseMax: 2.8, headshake: 0.45, headshakeHz: 7, dragMul: 0.9, endurance: 9, seekDeep: 0.5, seekReeds: 0.6, circling: 0.15 },
     },
     {
       id: 'karas', name: 'Karaś', chance: 0.2, minCm: 10, maxCm: 30, a: 0.02, b: 3.0, strength: 0.9,
       lengthSkew: 1.8, nibblerMaxCm: 16,
-      zone: { depthMin: 0.2, depthMax: 1.9, depthRamp: 0.6, reedBonus: 1.6, pierBonus: 0.1, structureRange: 14, outside: 0.15, inside: 1 },
+      zone: { depthMin: 0.2, depthMax: 1.9, depthRamp: 0.6, reedBonus: 1.6, structureBonus: 0.1, structureRange: 14, outside: 0.15, inside: 1 },
       bite: { window: 1.0 },
       fight: { cruise: 0.5, peak: 0.9, surgeMin: 1.0, surgeMax: 2.0, pauseMin: 2.5, pauseMax: 5.0, headshake: 0.2, headshakeHz: 3, dragMul: 1.1, endurance: 11, seekDeep: 0.2, seekReeds: 0.9, circling: 0.8 },
     },
     {
       id: 'leszcz', name: 'Leszcz', chance: 0.13, minCm: 25, maxCm: 60, a: 0.0086, b: 3.13, strength: 0.8,
       lengthSkew: 1.9, nibblerMaxCm: 0,
-      zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0, pierBonus: 0, structureRange: 8, outside: 0.06, inside: 1.5 },
+      zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0, structureBonus: 0, structureRange: 8, outside: 0.06, inside: 1.5 },
       bite: { window: 1.2 },
       fight: { cruise: 0.62, peak: 0.78, surgeMin: 1.0, surgeMax: 2.0, pauseMin: 8, pauseMax: 16, headshake: 0.05, headshakeHz: 2, dragMul: 2.4, endurance: 13, seekDeep: 1.0, seekReeds: 0, circling: 0.1 },
     },
     {
       id: 'karp', name: 'Karp', chance: 0.07, minCm: 35, maxCm: 80, a: 0.013, b: 3.05, strength: 1.6,
       lengthSkew: 1.7, nibblerMaxCm: 0,
-      zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0.3, pierBonus: 0, structureRange: 12, outside: 0.04, inside: 1.5 },
+      zone: { depthMin: 2.5, depthMax: 6, depthRamp: 0.7, reedBonus: 0.3, structureBonus: 0, structureRange: 12, outside: 0.04, inside: 1.5 },
       bite: { window: 1.5 },
       fight: { cruise: 0.4, peak: 1.0, surgeMin: 2.0, surgeMax: 3.0, pauseMin: 3.0, pauseMax: 7.0, headshake: 0.12, headshakeHz: 2.5, dragMul: 1.0, endurance: 26, seekDeep: 0.7, seekReeds: 0.7, circling: 0.2 },
     },

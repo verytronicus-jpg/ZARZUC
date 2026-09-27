@@ -12,7 +12,8 @@ import { WaterEffects } from '../render/WaterEffects';
 import { createDefaultRegistry } from '../assets';
 import type { AssetRegistry } from '../assets/AssetRegistry';
 import { World } from '../world/World';
-import { resetWorldCaches } from '../world/terrainMath';
+import { resetWorldCaches, porchStart } from '../world/terrainMath';
+import * as terrainMath from '../world/terrainMath';
 import { Player } from '../player/Player';
 import { Preparation } from '../player/Preparation';
 import { FishingController, type CaughtFish } from '../fishing/FishingController';
@@ -98,6 +99,9 @@ export class Game {
     this.setupStates();
     this.setupUIEvents();
     (window as unknown as { __game: Game }).__game = this;
+    // debug: czysta matematyka świata (ścieżka, głębokość, struktury…) z konsoli
+    (window as unknown as { __terrain: typeof terrainMath }).__terrain = terrainMath;
+    (window as unknown as { __cfg: typeof CFG }).__cfg = CFG;
     document.title = CFG.game.title;
   }
 
@@ -152,9 +156,9 @@ export class Game {
           this.ui.showHud(false);
           this.player.controlled = false;
           this.escHold = 0;
-          // K1: intro natychmiastowe – postać od razu na starcie z wędką i robakami
-          const W = CFG.world;
-          this.player.teleport(W.startX, W.startZ, W.startYaw);
+          // intro natychmiastowe (K3 doda drzwi) – postać na ganku z wędką i robakami
+          const st = porchStart();
+          this.player.teleport(st.x, st.z, st.yaw);
           this.player.root.visible = true;
           this.prep.equip();
           this.endIntro();
@@ -354,9 +358,12 @@ export class Game {
     }
 
     this.effects.update(scaledDt, rt);
-    this.ctx.followShadow(this.shadowTarget());
-    if (st !== 'START_SCREEN' && st !== 'BOOT') this.ctx.render();
-    this.renderFloatCam(frameDt);
+    const shadowAt = this.shadowTarget();
+    this.ctx.followShadow(shadowAt);
+    this.world.updateShadowProxies(shadowAt);
+    this.world.updateEffects(frameDt);
+    if (st !== 'START_SCREEN' && st !== 'BOOT' && !CFG.debug.skipRender) this.ctx.render();
+    if (!CFG.debug.skipRender) this.renderFloatCam(frameDt);
     this.preview.update(frameDt);
     this.audio.update(scaledDt, this.fishing.reeling && this.fishing.rigOut, this.fishing.fsm.is('FIGHT') ? this.fishing.dragPayout : 0);
     if (this.debugOverlay) this.ui.setDebug(this.debugText());

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CFG, speciesById } from '../src/config';
 import { Rng } from '../src/core/Rng';
 import { weightGrams, sampleLength, pickSpecies, zoneFit, speciesWeights, type SpotEnv } from '../src/fishing/species';
+import { lakeDepth, pierRect, structureDistance } from '../src/world/terrainMath';
 
 describe('wzór długość–waga W = a·L^b', () => {
   it('liczy wagę zgodnie ze wzorem dla każdego gatunku', () => {
@@ -68,7 +69,7 @@ describe('losowanie gatunku (szansa × strefa)', () => {
   };
 
   it('rozkład zgodny z wagami (szansa × dopasowanie)', () => {
-    const env = { depth: 1.5, reedDist: 30, pierDist: 30 };
+    const env = { depth: 1.5, reedDist: 30, structDist: 30 };
     const w = speciesWeights(env);
     const sum = w.reduce((a, b) => a + b, 0);
     const c = count(env);
@@ -78,21 +79,38 @@ describe('losowanie gatunku (szansa × strefa)', () => {
   });
 
   it('głęboka woda → leszcz i karp; płycizna przy trzcinach → karaś', () => {
-    const deep = count({ depth: 3.8, reedDist: 40, pierDist: 40 });
-    const shallow = count({ depth: 0.7, reedDist: 2, pierDist: 40 });
+    const deep = count({ depth: 3.8, reedDist: 40, structDist: 40 });
+    const shallow = count({ depth: 0.7, reedDist: 2, structDist: 40 });
     expect((deep.leszcz ?? 0) + (deep.karp ?? 0)).toBeGreaterThan(0.4);
     expect((shallow.leszcz ?? 0) + (shallow.karp ?? 0)).toBeLessThan(0.05);
     expect(shallow.karas ?? 0).toBeGreaterThan(deep.karas ?? 0);
     expect(shallow.karas ?? 0).toBeGreaterThan(0.25);
   });
 
-  it('okoń lubi pomost', () => {
+  it('okoń lubi struktury (pomost, zwalone drzewo, kamienie cypla)', () => {
     const okon = speciesById('okon');
-    expect(zoneFit(okon, { depth: 2, reedDist: 40, pierDist: 1 })).toBeGreaterThan(zoneFit(okon, { depth: 2, reedDist: 40, pierDist: 40 }) * 1.5);
+    expect(zoneFit(okon, { depth: 2, reedDist: 40, structDist: 1 })).toBeGreaterThan(zoneFit(okon, { depth: 2, reedDist: 40, structDist: 40 }) * 1.5);
+  });
+
+  it('okoń jest najczęstszy przy każdej ze struktur mapy', () => {
+    const W = CFG.world;
+    const p = pierRect();
+    const spots: Array<[number, number]> = [
+      [p.x0 - 1.5, p.z0 + 2], // przy końcu pomostu
+      [W.logX1 - 1, W.logZ1 - 1.5], // przy czubku zwalonego drzewa
+      [W.pointX - W.pointRadius - 1, W.pointZ + 2], // przy kamieniach cypla
+    ];
+    for (const [x, z] of spots) {
+      const env = { depth: lakeDepth(x, z), reedDist: 40, structDist: structureDistance(x, z) };
+      expect(env.depth).toBeGreaterThan(0.5);
+      const c = count(env);
+      const best = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0];
+      expect(best).toBe('okon');
+    }
   });
 
   it('jest powtarzalne dla tego samego ziarna RNG', () => {
-    const env = { depth: 2, reedDist: 10, pierDist: 10 };
+    const env = { depth: 2, reedDist: 10, structDist: 10 };
     const a = new Rng(99);
     const b = new Rng(99);
     for (let i = 0; i < 100; i++) expect(pickSpecies(a, env).id).toBe(pickSpecies(b, env).id);

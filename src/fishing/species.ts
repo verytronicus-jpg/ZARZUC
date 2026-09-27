@@ -22,8 +22,8 @@ export interface SpotEnv {
   depth: number;
   /** odległość do najbliższych trzcin [m] */
   reedDist: number;
-  /** odległość do pomostu [m] */
-  pierDist: number;
+  /** odległość do najbliższej struktury: pomost, zwalone drzewo, kamienie cypla [m] */
+  structDist: number;
 }
 
 /** Dopasowanie gatunku do miejsca (0..~2.5). */
@@ -33,8 +33,8 @@ export function zoneFit(sp: SpeciesConfig, env: SpotEnv): number {
     smoothstep(z.depthMin - z.depthRamp, z.depthMin, env.depth) * (1 - smoothstep(z.depthMax, z.depthMax + z.depthRamp, env.depth));
   const depthFit = z.outside + (z.inside - z.outside) * inDepth;
   const reed = z.reedBonus * (1 - smoothstep(0, z.structureRange, env.reedDist));
-  const pier = z.pierBonus * (1 - smoothstep(0, z.structureRange, env.pierDist));
-  return depthFit * (1 + reed + pier);
+  const struct = z.structureBonus * (1 - smoothstep(0, z.structureRange, env.structDist));
+  return depthFit * (1 + reed + struct);
 }
 
 export function speciesWeights(env: SpotEnv, list: readonly SpeciesConfig[] = CFG.species): number[] {

@@ -5,7 +5,7 @@ import { events } from '../core/Events';
 import type { Input } from '../core/Input';
 import type { World } from '../world/World';
 import { resolveCollisions } from './collision';
-import { boundsR, onPier } from '../world/terrainMath';
+import { outsideBounds, onPier, porchHeight } from '../world/terrainMath';
 import { CharacterAnimator } from './CharacterAnimator';
 
 /** Kontroler postaci: przyspieszenie/hamowanie, płynny obrót, grawitacja, teren, kolizje, granice. */
@@ -111,7 +111,7 @@ export class Player {
       const blocked = (x: number, z: number) => {
         if (onPier(x, z)) return false;
         if (this.world.depthAt(x, z) > CFG.world.maxWadeDepth) return true;
-        if (boundsR(x, z) > 1) return true;
+        if (outsideBounds(x, z)) return true;
         const g = this.world.groundAt(x, z);
         return g - this.pos.y > P.maxStepUp;
       };
@@ -136,7 +136,7 @@ export class Player {
         const stepLen = running ? P.stepLengthRun : P.stepLengthWalk;
         if (this.stepAcc >= stepLen) {
           this.stepAcc = 0;
-          events.emit('step', { surface: this.onPier() ? 'wood' : this.world.depthAt(this.pos.x, this.pos.z) > 0 ? 'gravel' : 'grass', run: running });
+          events.emit('step', { surface: this.onPier() || porchHeight(this.pos.x, this.pos.z) > -Infinity ? 'wood' : this.world.depthAt(this.pos.x, this.pos.z) > 0 ? 'gravel' : 'grass', run: running });
         }
       }
     }

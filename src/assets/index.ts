@@ -3,6 +3,22 @@ import { mergeStaticChildren } from './materials';
 import { CharacterFactory } from './procedural/character';
 import { RodFactory, FloatFactory, HookFactory, WormFactory, WormBoxFactory } from './procedural/tackle';
 import { FishFactory } from './procedural/fish';
+import { CabinFactory, BoatFactory } from './procedural/cabin';
+import {
+  SpruceFactory,
+  FarTreeFactory,
+  PineFactory,
+  BirchFactory,
+  WillowFactory,
+  BushFactory,
+  FernFactory,
+  ReedFactory,
+  CattailFactory,
+  LilyFactory,
+  RockFactory,
+  StumpFactory,
+  FallenLogFactory,
+} from './procedural/nature';
 
 /** Fabryka proceduralna + scalanie statycznych części (mniej draw calli). */
 function optimized(f: AssetFactory): AssetFactory {
@@ -19,5 +35,22 @@ export function createDefaultRegistry(): AssetRegistry {
   r.register('worm', new WormFactory());
   r.register('wormBox', optimized(new WormBoxFactory()));
   r.register('fish', new FishFactory());
+  // świat (chatka/łódka: części scalone w fabryce; roślinność: jedna siatka → InstancedMesh)
+  r.register('cabin', new CabinFactory());
+  r.register('boat', new BoatFactory());
+  r.register('spruceNear', new SpruceFactory('near'));
+  r.register('spruceMid', new SpruceFactory('mid'));
+  r.register('farTree', new FarTreeFactory());
+  r.register('pine', new PineFactory());
+  r.register('birch', new BirchFactory());
+  r.register('willow', new WillowFactory());
+  r.register('bush', new BushFactory());
+  r.register('fern', new FernFactory());
+  r.register('reeds', new ReedFactory());
+  r.register('cattail', new CattailFactory());
+  r.register('lily', new LilyFactory());
+  r.register('rock', new RockFactory());
+  r.register('stump', new StumpFactory());
+  r.register('fallenLog', new FallenLogFactory());
   return r;
 }

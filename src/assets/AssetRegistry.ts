@@ -15,7 +15,23 @@ export type AssetKind =
   | 'fish'
   | 'wormBox'
   | 'worm'
-  | 'hook';
+  | 'hook'
+  | 'cabin'
+  | 'boat'
+  | 'spruceNear'
+  | 'spruceMid'
+  | 'farTree'
+  | 'pine'
+  | 'birch'
+  | 'willow'
+  | 'bush'
+  | 'fern'
+  | 'reeds'
+  | 'cattail'
+  | 'lily'
+  | 'rock'
+  | 'stump'
+  | 'fallenLog';
 
 export interface AssetOptions {
   species?: SpeciesId;
@@ -54,6 +70,11 @@ export const PIVOTS = {
   // spławik / ryba
   floatTop: 'float_top',
   mouth: 'mouth',
+  // chatka
+  doorFront: 'door_front',
+  doorLatch: 'door_latch',
+  chimneyTop: 'chimney_top',
+  lantern: 'lantern',
 } as const;
 
 export function pivot(root: THREE.Object3D, name: string): THREE.Object3D {

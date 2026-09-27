@@ -77,7 +77,7 @@ export class CameraRig {
         p.copy(pivot).addScaledVector(f, -d);
         const g = this.world.terrainAt(p.x, p.z);
         const floor = Math.max(g, this.world.isWater(p.x, p.z, 0.01) ? CFG.water.level + 0.08 : -Infinity);
-        if (p.y < floor + C.collisionPad) {
+        if (p.y < floor + C.collisionPad || this.world.cameraBlocked(p.x, p.y, p.z)) {
           allowed = Math.max(C.minDistance, (want * (i - 1)) / N);
           break;
         }
