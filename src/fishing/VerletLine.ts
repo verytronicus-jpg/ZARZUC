@@ -128,6 +128,39 @@ export class VerletLine {
   }
 
   /**
+   * Zestaw w locie: żyłka zwisa luźnym łukiem pod cięciwą szczytówka → spławik (schodzi ze szpuli z zapasem),
+   * a nie ciągnie się sztywno za spławikiem. Leży na tafli/ziemi. Po upadku lina Verleta startuje z tego kształtu.
+   */
+  drape(a: THREE.Vector3, b: THREE.Vector3, env: LineEnv): void {
+    if (!this.initialized) this.reset(a, b);
+    const L = CFG.line;
+    const P = this.pos;
+    this.snap.set(P);
+    const dist = a.distanceTo(b);
+    const sag = Math.min(dist * L.flightSagFrac, L.flightSagMax);
+    // prostopadła do cięciwy w poziomie (wiatr spycha żyłkę w bok)
+    const hx = b.x - a.x;
+    const hz = b.z - a.z;
+    const hl = Math.hypot(hx, hz) || 1;
+    const bow = sag * L.flightBowFrac;
+    const px = (-hz / hl) * bow;
+    const pz = (hx / hl) * bow;
+    for (let i = 0; i < this.n; i++) {
+      const t = i / (this.n - 1);
+      const k = i * 3;
+      const arc = 4 * t * (1 - t);
+      const x = a.x + hx * t + px * arc;
+      const z = a.z + hz * t + pz * arc;
+      let y = a.y + (b.y - a.y) * t - sag * arc;
+      if (i > 0) y = Math.max(y, env.waterY(x, z) - 0.004, env.terrainY(x, z) + 0.01);
+      P[k] = x;
+      P[k + 1] = y;
+      P[k + 2] = z;
+    }
+    this.prev.set(P);
+  }
+
+  /**
    * Punkty do narysowania: interpolacja między krokami fizyki (alpha) i dociągnięcie końców do pozycji
    * wyrenderowanej szczytówki i spławika (bez „odrywania się” żyłki od wędki w ruchu).
    */
@@ -166,7 +199,13 @@ export class LineRenderer {
   private prevA: THREE.BufferAttribute;
   private nextA: THREE.BufferAttribute;
   private pts: Float32Array;
-  private readonly uniforms: { uColor: { value: THREE.Color }; uOpacity: { value: number }; uWidth: { value: number }; uResolution: { value: THREE.Vector2 } };
+  private readonly uniforms: {
+    uColor: { value: THREE.Color };
+    uOpacity: { value: number };
+    uWidth: { value: number };
+    uResolution: { value: THREE.Vector2 };
+    uFade: { value: THREE.Vector2 };
+  };
 
   constructor(n: number, color = 0xeeeeee, opacity = 0.75, width = CFG.line.widthPx) {
     this.sub = n > 2 ? CFG.line.smoothSub : 1;
@@ -198,6 +237,7 @@ export class LineRenderer {
       uOpacity: { value: opacity },
       uWidth: { value: width },
       uResolution: { value: new THREE.Vector2(1, 1) },
+      uFade: { value: new THREE.Vector2(CFG.line.fadeDist, CFG.line.fadeMin) },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -211,7 +251,9 @@ export class LineRenderer {
         uniform vec2 uResolution;
         uniform float uWidth;
         varying float vSide;
+        varying float vDist;
         void main() {
+          vDist = length((modelViewMatrix * vec4(position, 1.0)).xyz);
           mat4 mvp = projectionMatrix * modelViewMatrix;
           vec4 c = mvp * vec4(position, 1.0);
           vec4 p = mvp * vec4(aPrev, 1.0);
@@ -231,11 +273,14 @@ export class LineRenderer {
         uniform vec3 uColor;
         uniform float uOpacity;
         uniform float uWidth;
+        uniform vec2 uFade;
         varying float vSide;
+        varying float vDist;
         void main() {
           float w = uWidth + 1.0;
           float a = clamp((1.0 - abs(vSide)) * w * 0.5 + 0.25, 0.0, 1.0);
-          gl_FragColor = vec4(uColor, uOpacity * a * min(1.0, uWidth));
+          float fade = clamp(uFade.x / max(vDist, 1e-3), uFade.y, 1.0);
+          gl_FragColor = vec4(uColor, uOpacity * a * min(1.0, uWidth) * fade);
           #include <colorspace_fragment>
         }`,
     });

@@ -477,9 +477,17 @@ export const CFG = {
     visualSlackAbs: 0.35,
     /** przeskok szczytówki większy niż [m] (teleport) → żyłka układa się od nowa */
     resetJump: 4,
+    /** zwis żyłki w locie zestawu: ugięcie w połowie = frac · odległość (+ max [m]); żyłka schodzi ze szpuli luźno */
+    flightSagFrac: 0.14,
+    flightSagMax: 4,
+    /** boczne wybrzuszenie żyłki w locie (wiatr) jako część zwisu – widoczne z kamery za plecami */
+    flightBowFrac: 0.6,
     /** wygląd: szerokość [px], podział krzywej, kolor */
-    widthPx: 1.8,
+    widthPx: 1.3,
     smoothSub: 3,
+    /** z daleka żyłka blednie jak prawdziwa: krycie ∝ fadeDist / odległość od kamery, nie mniej niż fadeMin */
+    fadeDist: 4,
+    fadeMin: 0.22,
     waterBuoyancy: 0.85,
     /** wytrzymałość żyłki [kgf] (0,22 mm ≈ 5,5 kgf) */
     strengthKgf: 5.5,

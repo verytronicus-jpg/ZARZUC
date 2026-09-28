@@ -61,7 +61,7 @@ export class FishingController {
   readonly fsm: StateMachine<FState>;
   readonly bobber: Bobber;
   readonly line = new VerletLine();
-  readonly lineRenderer = new LineRenderer(CFG.line.points, 0xf2efe6, 0.85);
+  readonly lineRenderer = new LineRenderer(CFG.line.points, 0xf2efe6, 0.7);
   readonly dropperRenderer = new LineRenderer(2, 0xdddddd, 0.55, 1.2);
   /** punkty żyłki do narysowania (interpolowane) */
   private lineDraw = new Float32Array(CFG.line.points * 3);
@@ -811,7 +811,8 @@ export class FishingController {
     // ------- żyłka wizualna -------
     const end = tmpB.copy(this.bobber.pos);
     this.line.surfaceClamp = !this.fish;
-    this.line.update(dt, this.lastTip, end, Math.max(this.L, 0.3), this.lineEnv);
+    if (this.bobber.mode === 'flight' && this.line.endPinned) this.line.drape(this.lastTip, end, this.lineEnv);
+    else this.line.update(dt, this.lastTip, end, Math.max(this.L, 0.3), this.lineEnv);
 
     // czas w stanie + timeouty
     this.fsm.update(dt);
